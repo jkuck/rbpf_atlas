@@ -1095,7 +1095,7 @@ def evaluate(min_score, det_method,mail,obj_class = "car", include_ignored_gt = 
 
     (gt_objects, det_objects) = e.compute3rdPartyMetrics(include_ignored_gt, include_dontcare_in_gt, include_ignored_detections)
 
-    if USE_PICKLED_DATA:
+    if USE_PICKLED_DATA and (not os.path.isfile(lock_filename)):
         f_lock = open(lock_filename, 'w')
         f_lock.write("locked\n")
         f_lock.close()
