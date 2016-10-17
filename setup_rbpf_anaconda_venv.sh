@@ -1,7 +1,6 @@
 #!/bin/bash
 
-cd /atlas/u/jkuck/rbpf_atlas
-
+cd /atlas/u/jkuck/rbpf_target_tracking
 
 PACKAGE_DIR=/atlas/u/jkuck/software
 export PATH=$PACKAGE_DIR/anaconda2/bin:$PATH
@@ -14,6 +13,8 @@ source activate anaconda_venv
 #conda install -n anaconda_venv numpy
 #conda install -n anaconda_venv filterpy
 #conda install -n anaconda_venv munkres
+
+cd /atlas/u/jkuck/RANDOM_TEST_GIT_DIR/rbpf_atlas 
 
 echo "Using python from:"
 which python
