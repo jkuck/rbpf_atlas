@@ -14,7 +14,7 @@ $ git clone https://github.com/jkuck/rbpf_atlas
 $ cd rbpf_atlas/
 
 ##4. Now you should be in the directory /atlas/u/\<your_id>/rbpf_atlas.
-   Edit line 12 of submit_single_eval_job.sh and line 17 of setup_rbpf_anaconda_venv.sh from:
+   Edit line 3 in submit_single_eval_job.sh and line 3 in setup_rbpf_anaconda_venv.sh from:
    
 cd /atlas/u/jkuck/RANDOM_TEST_GIT_DIR/rbpf_atlas
 
