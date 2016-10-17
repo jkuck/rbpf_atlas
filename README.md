@@ -10,6 +10,7 @@ $ cd \<your_id>
 
 ##3. Clone this repository:
 $ git clone https://github.com/jkuck/rbpf_atlas
+
 $ cd rbpf_atlas/
 
 ##4. Now you should be in the directory /atlas/u/\<your_id>/rbpf_atlas.
