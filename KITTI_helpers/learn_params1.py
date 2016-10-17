@@ -1055,8 +1055,9 @@ def evaluate(min_score, det_method,mail,obj_class = "car", include_ignored_gt = 
 
         data_filename = PICKELD_DATA_DIRECTORY + "/min_score_%f_det_method_%s_obj_class_%s_include_ignored_gt_%s_include_dontcare_gt_%s_include_ignored_det_%s.pickle" % \
                                                  (min_score, det_method, obj_class, include_ignored_gt, include_dontcare_in_gt, include_ignored_detections)
+        lock_filename = data_filename + "_lock"
 
-        if os.path.isfile(data_filename): 
+        if os.path.isfile(data_filename) and (not os.path.isfile(lock_filename)): 
             f = open(data_filename, 'r')
             (gt_objects, det_objects) = pickle.load(f)
             f.close()
@@ -1095,9 +1096,15 @@ def evaluate(min_score, det_method,mail,obj_class = "car", include_ignored_gt = 
     (gt_objects, det_objects) = e.compute3rdPartyMetrics(include_ignored_gt, include_dontcare_in_gt, include_ignored_detections)
 
     if USE_PICKLED_DATA:
+        f_lock = open(lock_filename, 'w')
+        f_lock.write("locked\n")
+        f_lock.close()
+
         f = open(data_filename, 'w')
         pickle.dump((gt_objects, det_objects), f)
         f.close()  
+
+        os.remove(lock_filename)
 
     # finish
     if len(classes)==0:
