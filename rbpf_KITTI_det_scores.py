@@ -19,9 +19,6 @@ import resource
 import errno
 from munkres import Munkres
 from collections import deque
-
-#sys.path.insert(0, "/Users/jkuck/rotation3/clearmetrics")
-#import clearmetrics
 sys.path.insert(0, "./KITTI_helpers")
 from learn_params1 import get_meas_target_set
 from learn_params1 import get_meas_target_sets_lsvm_and_regionlets
@@ -33,22 +30,6 @@ from jdk_helper_evaluate_results import eval_results
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
-
-#from multiple_meas_per_time_assoc_priors import HiddenState
-#from proposal2_helper import possible_measurement_target_associations
-#from proposal2_helper import memoized_birth_clutter_prior
-#from proposal2_helper import sample_birth_clutter_counts
-#from proposal2_helper import sample_target_deaths_proposal2
-random.seed(5)
-np.random.seed(seed=5)
-#MKL_NUM_THREADS=1
-#NUMEXPR_NUM_THREADS=1
-
-InfLoopDEBUG = False
-InfLoopDEBUG1 = False
-InfLoopDEBUG2 = False
-InfLoopDEBUG3 = False
-
 import cProfile
 import time
 import os
@@ -56,6 +37,11 @@ from run_experiment_batch import DIRECTORY_OF_ALL_RESULTS
 from run_experiment_batch import CUR_EXPERIMENT_BATCH_NAME
 from run_experiment_batch import SEQUENCES_TO_PROCESS
 from run_experiment_batch import get_description_of_run
+
+
+random.seed(5)
+np.random.seed(seed=5)
+
 
 
 USE_CREATE_CHILD = True #speed up copying during resampling
@@ -780,18 +766,12 @@ class Particle:
 			p_target_deaths.append(target.death_prob)
 			assert(p_target_deaths[len(p_target_deaths) - 1] >= 0 and p_target_deaths[len(p_target_deaths) - 1] <= 1)
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 4\n")
 
 		(targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs) = \
 			self.sample_proposal_distr3(measurement_lists, self.targets.living_count, p_target_deaths, \
 										cur_time, measurement_scores)
 
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 5\n")
 
 		living_target_indices = []
 		for i in range(self.targets.living_count):
@@ -808,9 +788,6 @@ class Particle:
 			exact_probability *= cur_assoc_prob
 
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 6\n")
 
 		exact_death_prob = self.calc_death_prior(living_target_indices, p_target_deaths)
 		exact_probability *= exact_death_prob
@@ -852,69 +829,39 @@ class Particle:
 		birth_count = 0
 		clutter_count = 0
 		remaining_meas_count = len(measurement_list)
-		if InfLoopDEBUG or InfLoopDEBUG1 or InfLoopDEBUG3:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("number of measurements = %d and number of targets = %d\n" % (len(measurement_list), total_target_count))
 
 		for (index, cur_meas) in enumerate(measurement_list):
-			if InfLoopDEBUG or InfLoopDEBUG1 or InfLoopDEBUG2 or InfLoopDEBUG3:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("processing measurement %d\n" % index)
 
 			score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[index])
 			#create proposal distribution for the current measurement
 			#compute target association proposal probabilities
 			proposal_distribution_list = []
 			for target_index in range(total_target_count):
-				if InfLoopDEBUG2 and (index == 0):
-					with open(debugInfLoopFile, "a") as myfile:
-						myfile.write("about to add target %d to proposal distribution\n" % target_index)
 
 				cur_target_likelihood = self.memoized_assoc_likelihood(cur_meas, meas_source_index, target_index, MEAS_NOISE_COVS[meas_source_index][score_index], score_index)
 				
-				if InfLoopDEBUG2 and (index == 0):
-					with open(debugInfLoopFile, "a") as myfile:
-						myfile.write("got target %d's likelihood\n" % target_index)
 
 
 				targ_likelihoods_summed_over_meas = 0.0
 				for meas_index in range(len(measurement_list)):
 					temp_score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[meas_index]) #score_index for the meas_index in this loop
-					if InfLoopDEBUG2 and (index == 0):
-						with open(debugInfLoopFile, "a") as myfile:
-							myfile.write("got mesaurement %d's score index\n" % meas_index)
 				
 					targ_likelihoods_summed_over_meas += self.memoized_assoc_likelihood(measurement_list[meas_index], meas_source_index, target_index,  MEAS_NOISE_COVS[meas_source_index][temp_score_index], temp_score_index)
 
-					if InfLoopDEBUG2 and (index == 0):
-						with open(debugInfLoopFile, "a") as myfile:
-							myfile.write("got likelihood mesaurement %d\n" % meas_index)
 
-				if InfLoopDEBUG2 and (index == 0):
-					with open(debugInfLoopFile, "a") as myfile:
-						myfile.write("targ_likelihoods_summed_over_meas = %f, target_index = %d, p_target_deaths[target_index] = %f, (target_index in list_of_measurement_associations) = %r\n" % (targ_likelihoods_summed_over_meas, target_index, p_target_deaths[target_index], (target_index in list_of_measurement_associations)))
 
 				if((targ_likelihoods_summed_over_meas != 0.0) and (not target_index in list_of_measurement_associations)\
 					and p_target_deaths[target_index] < 1.0):
 					cur_target_prior = TARGET_EMISSION_PROBS[meas_source_index][score_index]*cur_target_likelihood \
 									  /targ_likelihoods_summed_over_meas
-					if InfLoopDEBUG2 and (index == 0):
-						with open(debugInfLoopFile, "a") as myfile:
-							myfile.write("target_prior set in if statement")
 
 #					cur_target_prior = P_TARGET_EMISSION*cur_target_likelihood \
 #									  /targ_likelihoods_summed_over_meas
 				else:
 					cur_target_prior = 0.0
-					if InfLoopDEBUG2 and (index == 0):
-						with open(debugInfLoopFile, "a") as myfile:
-							myfile.write("target_prior set in else statement")
 
 
 				proposal_distribution_list.append(cur_target_likelihood*cur_target_prior)
-				if InfLoopDEBUG1 or InfLoopDEBUG2:
-					with open(debugInfLoopFile, "a") as myfile:
-						myfile.write("added target %d to proposal distribution\n" % target_index)
 
 			#compute birth association proposal probability
 			cur_birth_prior = 0.0
@@ -922,9 +869,6 @@ class Particle:
 				cur_birth_prior += BIRTH_PROBABILITIES[meas_source_index][score_index][i]*(i - birth_count)/remaining_meas_count 
 			proposal_distribution_list.append(cur_birth_prior*p_birth_likelihood)
 
-			if InfLoopDEBUG1:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("added birth probability to proposal distribution\n")
 
 
 			#compute clutter association proposal probability
@@ -933,33 +877,21 @@ class Particle:
 				cur_clutter_prior += CLUTTER_PROBABILITIES[meas_source_index][score_index][i]*(i - clutter_count)/remaining_meas_count 
 			proposal_distribution_list.append(cur_clutter_prior*p_clutter_likelihood)
 
-			if InfLoopDEBUG1:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("added clutter probability to proposal distribution\n")
 
 
 			#normalize the proposal distribution
 			proposal_distribution = np.asarray(proposal_distribution_list)
 			assert(np.sum(proposal_distribution) != 0.0), (len(proposal_distribution), proposal_distribution, birth_count, clutter_count, len(measurement_list), total_target_count)
 
-			if InfLoopDEBUG1:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("converted proposal distribution to np array\n")
 
 
 			proposal_distribution /= float(np.sum(proposal_distribution))
 			assert(len(proposal_distribution) == total_target_count+2)
 
-			if InfLoopDEBUG1:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("normalized proposal distribution\n")
 
 			sampled_assoc_idx = np.random.choice(len(proposal_distribution),
 													p=proposal_distribution)
 
-			if InfLoopDEBUG1 or InfLoopDEBUG3:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("sampled index %d from proposal distribution\n" % sampled_assoc_idx)
 
 			if(sampled_assoc_idx <= total_target_count): #target or birth association
 				list_of_measurement_associations.append(sampled_assoc_idx)
@@ -972,9 +904,6 @@ class Particle:
 			proposal_probability *= proposal_distribution[sampled_assoc_idx]
 
 			remaining_meas_count -= 1
-			if InfLoopDEBUG1 or InfLoopDEBUG3:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("finished processing measurement %d\n" % index)
 
 		assert(remaining_meas_count == 0)
 		return(list_of_measurement_associations, proposal_probability)
@@ -1012,9 +941,6 @@ class Particle:
 			proposal_probability *= cur_proposal_prob
 
 		assert(len(measurement_associations) == len(measurement_lists))
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 7\n")
 
 ############################################################################################################
 		#sample target deaths from unassociated targets
@@ -1032,9 +958,6 @@ class Particle:
 			else:
 				unassociated_target_death_probs.append(0.0)
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 8\n")
 
 
 		if USE_LEARNED_DEATH_PROBABILITIES:
@@ -1438,9 +1361,6 @@ DON"T THINK THIS BELONGS IN PARTICLE, OR PARAMETERS COULD BE CLEANED UP
 
 		birth_value = self.targets.living_count
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 1\n")
 
 		(measurement_associations, dead_target_indices, imprt_re_weight) = \
 			self.sample_data_assoc_and_death_mult_meas_per_time_proposal_distr_1(measurement_lists, \
@@ -1448,9 +1368,6 @@ DON"T THINK THIS BELONGS IN PARTICLE, OR PARAMETERS COULD BE CLEANED UP
 		assert(len(measurement_associations) == len(measurement_lists))
 		assert(imprt_re_weight != 0.0), imprt_re_weight
 		self.importance_weight *= imprt_re_weight #update particle's importance weight
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 2\n")
 		#process measurement associations
 		for meas_source_index in range(len(measurement_associations)):
 			assert(len(measurement_associations[meas_source_index]) == len(measurement_lists[meas_source_index]) and
@@ -1460,9 +1377,6 @@ DON"T THINK THIS BELONGS IN PARTICLE, OR PARAMETERS COULD BE CLEANED UP
 				measurement_lists[meas_source_index], widths[meas_source_index], heights[meas_source_index], \
 				measurement_scores[meas_source_index], cur_time)
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("location 3\n")
 
 		#process target deaths
 		#double check dead_target_indices is sorted
@@ -1618,10 +1532,6 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 
 	for time_instance_index in range(number_time_instances):
 
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write('-'*80 + '\n')
-				myfile.write("beginning time instance %d\n" % time_instance_index)
 
 		time_stamp = target_sets[0].measurements[time_instance_index].time
 		for target_set in target_sets:
@@ -1640,9 +1550,6 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 
 		print "time_stamp = ", time_stamp, "living target count in first particle = ",\
 		particle_set[0].targets.living_count
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("about to run pre-measurement update tasks\n")
 
 		for particle in particle_set:
 			#update particle death probabilities
@@ -1656,16 +1563,10 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 				#update particle death probabilities AFTER kf_predict so that targets that moved
 				#off screen this time instance will be killed
 				particle.update_target_death_probabilities(time_stamp, prev_time_stamp)
-		if InfLoopDEBUG:
-			with open(debugInfLoopFile, "a") as myfile:
-				myfile.write("done running pre-measurement update tasks\n")
 
 		new_target_list = [] #for debugging, list of booleans whether each particle created a new target
 		pIdxDebugInfo = 0
 		for particle in particle_set:
-			if InfLoopDEBUG:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("about to process particle %d\n" % pIdxDebugInfo)
 
 			new_target = particle.update_particle_with_measurement(time_stamp, measurement_lists, widths, heights, measurement_scores)
 			new_target_list.append(new_target)
@@ -1829,9 +1730,6 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 					particle.targets.living_targets_q.append((time_instance_index, copy.deepcopy(particle.targets.living_targets)))
 		
 		if (get_eff_num_particles(particle_set) < N_PARTICLES/RESAMPLE_RATIO):
-			if InfLoopDEBUG:
-				with open(debugInfLoopFile, "a") as myfile:
-					myfile.write("about to resample\n")
 
 			perform_resampling(particle_set)
 			print "resampled on iter: ", iter
