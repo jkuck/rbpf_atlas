@@ -3,15 +3,15 @@ import os
 import errno
 
 NUM_RUNS=1
-SEQUENCES_TO_PROCESS = [i for i in range(21)]
+#SEQUENCES_TO_PROCESS = [i for i in range(21)]
 #SEQUENCES_TO_PROCESS = [11]
-#SEQUENCES_TO_PROCESS = [13]
+SEQUENCES_TO_PROCESS = [13]
 #NUM_PARTICLES_TO_TEST = [25, 100]
 NUM_PARTICLES_TO_TEST = [100]
 DIRECTORY_OF_ALL_RESULTS = './results'
 #CUR_EXPERIMENT_BATCH_NAME = 'gen_data'
 
-CUR_EXPERIMENT_BATCH_NAME = 'KITTI_data1'
+CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_scaled_SD-01_dup'
 
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 

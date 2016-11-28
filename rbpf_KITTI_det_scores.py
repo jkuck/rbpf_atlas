@@ -40,16 +40,20 @@ from run_experiment_batch import DIRECTORY_OF_ALL_RESULTS
 from run_experiment_batch import CUR_EXPERIMENT_BATCH_NAME
 from run_experiment_batch import SEQUENCES_TO_PROCESS
 from run_experiment_batch import get_description_of_run
+
+from rbpf_ORIGINAL_sampling import sample_and_reweight
+from rbpf_ORIGINAL_sampling import Parameters
+from rbpf_ORIGINAL_sampling import SCALED
 from gen_data import gen_data
-from rbpf_sampling import sample_and_reweight
-from rbpf_sampling import Parameters
+from gen_data import NUM_GEN_FRAMES
+from gen_data import NOISE_MAGNITUDE
 
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
 
-USE_GENERATED_DATA = False
+USE_GENERATED_DATA = True
 
 USE_RANDOM_SEED = False
 PLOT_TARGET_LOCATIONS = True
@@ -57,7 +61,7 @@ if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
 
-
+USE_POISSON_DEATH_MODEL = True
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
@@ -69,27 +73,6 @@ FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False
 #(i.e. not regionlets and then lsvm)
 MAX_1_MEAS_UPDATE = True
 
-######DIRECTORY_OF_ALL_RESULTS = '/atlas/u/jkuck/rbpf_target_tracking'
-######CUR_EXPERIMENT_BATCH_NAME = 'test_copy_correctness_orig_copy'
-#######run on these sequences
-#######SEQUENCES_TO_PROCESS = [0]
-######SEQUENCES_TO_PROCESS = [i for i in range(21)]
-
-#Variables defined in main ARE global I think, not needed here (triple check...)
-#define global variables, which will be set in main
-#SCORE_INTERVALS = None
-#TARGET_EMISSION_PROBS = None
-#CLUTTER_PROBABILITIES = None
-#BIRTH_PROBABILITIES = None
-#MEAS_NOISE_COVS = None
-#BORDER_DEATH_PROBABILITIES = None
-#NOT_BORDER_DEATH_PROBABILITIES = None
-
-
-#SEQUENCES_TO_PROCESS = [i for i in range(21)]
-#eval_results('./rbpf_KITTI_results', SEQUENCES_TO_PROCESS)
-#sleep(5)
-#RBPF algorithmic paramters
 
 RESAMPLE_RATIO = 2.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
@@ -105,86 +88,89 @@ USE_CONSTANT_R = True
 CACHED_LIKELIHOODS = 0
 NOT_CACHED_LIKELIHOODS = 0
 
-
-
-
-#from learn_params
-#BIRTH_COUNT_PRIOR = [0.9371030016191306, 0.0528085689376012, 0.007223813675426578, 0.0016191306513887158, 0.000747291069871715, 0.00012454851164528583, 0, 0.00012454851164528583, 0.00012454851164528583, 0, 0, 0, 0, 0.00012454851164528583]
-#from learn_params1, not counting 'ignored' ground truth
-BIRTH_COUNT_PRIOR = [0.95640802092415, 0.039357329679910326, 0.0027400672561962883, 0.0008718395815170009, 0.00012454851164528583, 0.00012454851164528583, 0, 0.00024909702329057166, 0, 0, 0.00012454851164528583]
-
-
-
-#regionlet detection with score > 2.0:
-#from learn_params
-#P_TARGET_EMISSION = 0.813482 
-#from learn_params1, not counting 'ignored' ground truth
-P_TARGET_EMISSION = 0.813358070501
-#death probabiltiies, for sampling AFTER associations, conditioned on un-association
-#DEATH_PROBABILITIES = [-99, 0.1558803061934586, 0.24179829890643986, 0.1600831600831601, 0.10416666666666667, 0.08835341365461848, 0.04081632653061224, 0.06832298136645963, 0.06201550387596899, 0.04716981132075472, 0.056818181818181816, 0.013333333333333334, 0.028985507246376812, 0.03278688524590164, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0625, 0.03571428571428571, 0.0, 0.0, 0.043478260869565216, 0.0, 0.05555555555555555, 0.0, 0.0625, 0.07142857142857142, 0.0, 0.0, 0.0, 0.0, 0.0, 0.09090909090909091, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.16666666666666666, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3333333333333333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-#BORDER_DEATH_PROBABILITIES = [-99, 0.3290203327171904, 0.5868263473053892, 0.48148148148148145, 0.4375, 0.42424242424242425, 0.2222222222222222, 0.35714285714285715, 0.2222222222222222, 0.0, 0.3333333333333333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.05133928571428571, 0.006134969325153374, 0.03468208092485549, 0.025735294117647058, 0.037037037037037035, 0.02247191011235955, 0.04081632653061224, 0.05, 0.05, 0.036585365853658534, 0.013888888888888888, 0.030303030303030304, 0.03389830508474576, 0.0, 0.0, 0.0, 0.05128205128205128, 0.0, 0.06451612903225806, 0.037037037037037035, 0.0, 0.0, 0.045454545454545456, 0.0, 0.05555555555555555, 0.0, 0.0625, 0.07142857142857142, 0.0, 0.0, 0.0, 0.0, 0.0, 0.09090909090909091, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.16666666666666666, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3333333333333333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-#from learn_params.py
-#BORDER_DEATH_PROBABILITIES = [-99, 0.3290203327171904, 0.5868263473053892, 0.48148148148148145, 0.4375, 0.42424242424242425]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.05133928571428571, 0.006134969325153374, 0.03468208092485549, 0.025735294117647058, 0.037037037037037035]
-
-#BORDER_DEATH_PROBABILITIES = [-99, 0.3116591928251121, 0.5483870967741935, 0.5833333333333334, 0.8571428571428571, 1.0]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.001880843060242297, 0.026442307692307692, 0.04918032786885246, 0.06818181818181818, 0.008]
-
-#BORDER_DEATH_PROBABILITIES = [-99, 0.3290203327171904, 0.5868263473053892, 0.48148148148148145, 0.4375, 0.42424242424242425]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.05133928571428571, 0.006134969325153374, 0.03468208092485549, 0.025735294117647058, 0.037037037037037035]
-
-
-#BORDER_DEATH_PROBABILITIES = [-99, 0.8, 0.5, 0.3, 0.4, 0.8]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.07, 0.025, 0.03, 0.03, 0.006]
-
-#BORDER_DEATH_PROBABILITIES = [-99, 0.9430523917995444, 0.6785714285714286, 0.4444444444444444, 0.5, 1.0]
-#NOT_BORDER_DEATH_PROBABILITIES = [-99, 0.08235294117647059, 0.02284263959390863, 0.04150943396226415, 0.041237113402061855, 0.00684931506849315]
-#from learn_params
-#CLUTTER_COUNT_PRIOR = [0.7860256569933989, 0.17523975588491716 - .001, 0.031635321957902605, 0.004857391954166148, 0.0016191306513887158, 0.0003736455349358575, 0.00024909702329057166, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0, .001/20.0]
-#from learn_params1, not counting 'ignored' ground truth
-CLUTTER_COUNT_PRIOR = [0.5424333167268651, 0.3045211109727239, 0.11010088429443268, 0.0298916427948686, 0.008718395815170008, 0.003113712791132146, 0.0009963880931622867, 0.00012454851164528583, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06, 5e-06]
-
 p_clutter_likelihood = 1.0/float(1242*375)
-#p_birth_likelihood = 0.035
 p_birth_likelihood = 1.0/float(1242*375)
+##Kalman filter defaults
+#P_default = np.array([[40.64558317, 0,           0, 0],
+#                      [0,          10,           0, 0],
+#                      [0,           0, 5.56278505, 0],
+#                      [0,           0,           0, 3]])
+#
+#R_default = np.array([[ 0.0,   0.0],
+#                      [ 0.0,   0.0]])
+#
+#
+##learned from all GT
+#Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
+#                      [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
+#                      [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
+#                      [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
+#
+#Q_default = 4*Q_default
 
+
+#####################replicate ORIG
 
 #Kalman filter defaults
-#Think about doing this in a more principled way!!!
-#P_default = np.array([[57.54277774, 0,              0, 0],
-#                     [0,          10,           0, 0],
-#                     [0,           0, 17.86392672, 0],
-#                     [0,           0,           0, 3]])
-P_default = np.array([[40.64558317, 0,           0, 0],
-                      [0,          10,           0, 0],
-                      [0,           0, 5.56278505, 0],
-                      [0,           0,           0, 3]])
+#P_default = np.array([[10, 0,           0, 0],
+#                      [0,          10,           0, 0],
+#                      [0,           0, 10, 0],
+#                      [0,           0,           0, 10]])
 
-#regionlet detection with score > 2.0:
-#from learn_params
-#R_default = np.array([[  5.60121574e+01,  -3.60666228e-02],
-#                     [ -3.60666228e-02,   1.64772050e+01]])
-#from learn_params1, not counting 'ignored' ground truth
-#R_default = np.array([[ 40.64558317,   0.14036472],
-#                     [  0.14036472,   5.56278505]])
-R_default = np.array([[ 0.0,   0.0],
-                      [ 0.0,   0.0]])
+#P_default = np.array([[0.0025, 0,           0, 0],
+#                      [0,          1,           0, 0],
+#                      [0,           0, 0.0025, 0],
+#                      [0,           0,           0, 1]])
 
+#P_default = np.array([[  2.49938134e-03,   2.47463499e-04,   3.06160611e-13,
+#         -1.22464245e-10],
+#       [  2.47463499e-04,   9.90101460e+00,  -1.22464245e-10,
+#          5.04898570e-06],
+#       [  3.06160611e-13,  -1.22464245e-10,   2.49938140e-03,
+#          2.47439006e-04],
+#       [ -1.22464245e-10,   5.04898570e-06,   2.47439006e-04,
+#          9.90202440e+00]])
+
+if SCALED:
+    P_default = np.array([[(NOISE_MAGNITUDE*600)**2,      0,           0,  0],
+                          [0,          10*600**2,           0,  0],
+                          [0,           0,      (NOISE_MAGNITUDE*180)**2,  0],
+                          [0,           0,           0, 10*180**2]])
+
+    R_default = np.array([[ (NOISE_MAGNITUDE*600)**2,             0.0],
+                          [          0.0,   (NOISE_MAGNITUDE*180)**2]])
+    Q_default = np.array([[     (600**2)*0.00003333,    (600**2)*0.0050,         0,         0],
+                          [         (600**2)*0.0050,       (600**2)*1.0,         0,         0],
+                          [              0,         0,(180**2)*0.00003333,    (180**2)*0.0050],
+                          [              0,         0,    (180**2)*0.0050,    (180**2)*1.0000]])
+    Q_default = Q_default*10**(-3)
+
+else:
+    P_default = np.array([[(NOISE_MAGNITUDE)**2,    0,           0,  0],
+                          [0,          10,           0,  0],
+                          [0,           0,   (NOISE_MAGNITUDE)**2,  0],
+                          [0,           0,           0, 10]])
+
+    R_default = np.array([[ (NOISE_MAGNITUDE)**2,             0.0],
+                          [      0.0,   (NOISE_MAGNITUDE)**2]])
+    Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
+                          [         0.0050,       1.0,         0,         0],
+                          [              0,         0,0.00003333,    0.0050],
+                          [              0,         0,    0.0050,    1.0000]])
+    Q_default = Q_default*10**(-3)
 
 #learned from all GT
-#Q_default = np.array([[ 84.30812679,  84.21851631,  -4.01491901,  -8.5737873 ],
-#                     [ 84.21851631,  84.22312789,  -3.56066467,  -8.07744876],
-#                     [ -4.01491901,  -3.56066467,   4.59923143,   5.19622064],
-#                     [ -8.5737873 ,  -8.07744876,   5.19622064,   6.10733628]])
-#also learned from all GT
-Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
-                      [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
-                      [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
-                      [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
+#Q_default = np.array([[     0.0000,         0,    0.0050,         0],
+#                      [          0,    0.0000,         0,    0.0050],
+#                      [     0.0050,         0,    1.0000,         0],
+#                      [          0,    0.0050,         0,    1.0000]])
 
-Q_default = 4*Q_default
+
+
+
+
+#####################end replicate ORIG
+
 
 #measurement function matrix
 H = np.array([[1.0,  0.0, 0.0, 0.0],
@@ -346,6 +332,8 @@ class Target:
            self.x[2][0]<0 or self.x[2][0]>=CAMERA_PIXEL_HEIGHT):
 #           print '!'*40, "TARGET IS OFFSCREEN", '!'*40
             self.offscreen = True
+            if USE_GENERATED_DATA:
+                self.offscreen = False
 
         assert(self.x.shape == (4, 1))
         self.updated_this_time_instance = False
@@ -395,35 +383,51 @@ class Target:
         - death_prob: Probability of target death if this is the only target (float)
         """
 
-##################      #scipy.special.gdtrc(b, a, x) calculates 
-##################      #integral(gamma_dist(k = a, theta = b))from x to infinity
-##################      last_assoc = self.last_measurement_association
-##################
-##################      #I think this is correct
-##################      death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
-##################                 - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
-##################      death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
-##################      return death_prob
-        if(self.offscreen == True):
-            cur_death_prob = 1.0
-        else:
-            frames_since_last_assoc = int(round((cur_time - self.last_measurement_association)/default_time_step))
-            assert(abs(float(frames_since_last_assoc) - (cur_time - self.last_measurement_association)/default_time_step) < .00000001)
-            if(self.near_border()):
-                if frames_since_last_assoc < len(BORDER_DEATH_PROBABILITIES):
-                    cur_death_prob = BORDER_DEATH_PROBABILITIES[frames_since_last_assoc]
-                else:
-                    cur_death_prob = BORDER_DEATH_PROBABILITIES[-1]
-#                   cur_death_prob = 1.0
-            else:
-                if frames_since_last_assoc < len(NOT_BORDER_DEATH_PROBABILITIES):
-                    cur_death_prob = NOT_BORDER_DEATH_PROBABILITIES[frames_since_last_assoc]
-                else:
-                    cur_death_prob = NOT_BORDER_DEATH_PROBABILITIES[-1]
-#                   cur_death_prob = 1.0
+        if USE_POISSON_DEATH_MODEL:
+            #scipy.special.gdtrc(b, a, x) calculates 
+            #integral(gamma_dist(k = a, theta = b))from x to infinity
+            last_assoc = self.last_measurement_association
+            if USE_GENERATED_DATA:
+                cur_time = cur_time/10.0
+                prev_time = prev_time/10.0
+                last_assoc = self.last_measurement_association/10.0
 
-        assert(cur_death_prob >= 0.0 and cur_death_prob <= 1.0), cur_death_prob
-        return cur_death_prob
+            #I think this is correct
+            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
+                     - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+            death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
+#            return death_prob
+
+#            #this is used in paper's code
+#            time_step = cur_time - prev_time
+#            death_prob = gdtrc(theta_death, alpha_death, cur_time - last_assoc) \
+#                       - gdtrc(theta_death, alpha_death, cur_time - last_assoc + time_step)
+#            death_prob /= gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+
+            assert(death_prob >= 0.0 and death_prob <= 1.0), (death_prob, cur_time, prev_time)
+
+            return death_prob
+        else:
+            if(self.offscreen == True):
+                cur_death_prob = 1.0
+            else:
+                frames_since_last_assoc = int(round((cur_time - self.last_measurement_association)/default_time_step))
+                assert(abs(float(frames_since_last_assoc) - (cur_time - self.last_measurement_association)/default_time_step) < .00000001)
+                if(self.near_border()):
+                    if frames_since_last_assoc < len(BORDER_DEATH_PROBABILITIES):
+                        cur_death_prob = BORDER_DEATH_PROBABILITIES[frames_since_last_assoc]
+                    else:
+                        cur_death_prob = BORDER_DEATH_PROBABILITIES[-1]
+    #                   cur_death_prob = 1.0
+                else:
+                    if frames_since_last_assoc < len(NOT_BORDER_DEATH_PROBABILITIES):
+                        cur_death_prob = NOT_BORDER_DEATH_PROBABILITIES[frames_since_last_assoc]
+                    else:
+                        cur_death_prob = NOT_BORDER_DEATH_PROBABILITIES[-1]
+    #                   cur_death_prob = 1.0
+
+            assert(cur_death_prob >= 0.0 and cur_death_prob <= 1.0), cur_death_prob
+            return cur_death_prob
 
 class Measurement:
     #a collection of measurements at a single time instance
@@ -629,6 +633,8 @@ class TargetSet:
     def write_targets_to_KITTI_format(self, num_frames, results_filename, plot_filename):
         x_locations_all_targets = defaultdict(list)
         y_locations_all_targets = defaultdict(list)
+        if USE_GENERATED_DATA:
+            num_frames = NUM_GEN_FRAMES
         if USE_CREATE_CHILD:
             every_target = self.collect_ancestral_targets()
             f = open(results_filename, "w")
@@ -681,9 +687,12 @@ class TargetSet:
         if(PLOT_TARGET_LOCATIONS):
             assert(len(x_locations_all_targets) == len(y_locations_all_targets))
 
+            print "plotting target locations, ", len(x_locations_all_targets), " targets"
+
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
             for target_id, x_locations in x_locations_all_targets.iteritems():
+                print "target", target_id, "is alive for", len(x_locations), "time instances"
                 y_locations = y_locations_all_targets[target_id]
                 ax.plot(x_locations, y_locations,
                         '-o', label='Target %d' % target_id)
@@ -787,6 +796,8 @@ class Particle:
         (measurement_associations, dead_target_indices, imprt_re_weight) = \
             sample_and_reweight(self, measurement_lists, \
                 cur_time, measurement_scores, params)
+
+
         assert(len(measurement_associations) == len(measurement_lists))
         assert(imprt_re_weight != 0.0), imprt_re_weight
         self.importance_weight *= imprt_re_weight #update particle's importance weight
@@ -956,6 +967,7 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
 
         print "time_stamp = ", time_stamp, "living target count in first particle = ",\
         particle_set[0].targets.living_count
+        print "number of measurements from source 0:", len(measurement_lists[0])
 
         for particle in particle_set:
             #update particle death probabilities
@@ -964,7 +976,7 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
                 #Run Kalman filter prediction for all living targets
                 for target in particle.targets.living_targets:
                     dt = time_stamp - prev_time_stamp
-                    assert(abs(dt - default_time_step) < .00000001), (dt, default_time_step)
+                    assert(abs(dt - default_time_step) < .00000001), (dt, default_time_step, time_stamp, prev_time_stamp)
                     target.kf_predict(dt, time_stamp)
                 #update particle death probabilities AFTER kf_predict so that targets that moved
                 #off screen this time instance will be killed
@@ -1497,8 +1509,6 @@ if __name__ == "__main__":
 
     print 'end run'
     sys.exit(0);
-
-
 
 
 

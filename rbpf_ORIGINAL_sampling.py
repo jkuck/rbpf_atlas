@@ -4,7 +4,8 @@ import random
 
 import math
 
-
+from gen_data import SCALED
+from gen_data import NOISE_MAGNITUDE
 
 
 class Parameters:
@@ -23,12 +24,18 @@ class Parameters:
         self.clutter_probabilities = clutter_probabilities
         self.birth_probabilities = birth_probabilities
 
-        self.meas_noise_cov = meas_noise_cov
-        self.R_default = R_default
+        self.meas_noise_cov = None
+        if SCALED:
+            self.R_default = np.array([[ (NOISE_MAGNITUDE*600)**2,             0.0],
+                                       [          0.0,   (NOISE_MAGNITUDE*180)**2]])
+        else:
+            self.R_default = np.array([[ (NOISE_MAGNITUDE)**2,         0.0],
+                                       [      0.0,   (NOISE_MAGNITUDE)**2]])
+
         self.H = H
 
         self.USE_PYTHON_GAUSSIAN = USE_PYTHON_GAUSSIAN
-        self.USE_CONSTANT_R = USE_CONSTANT_R
+        self.USE_CONSTANT_R = True
 
         self.score_intervals = score_intervals
 
@@ -51,7 +58,9 @@ class Parameters:
                 index += 1
             else:
                 break
-                
+        print len(self.score_intervals[meas_source_index])
+        print self.score_intervals[meas_source_index]
+        print index
         assert(score > self.score_intervals[meas_source_index][index]), (score, self.score_intervals[meas_source_index][index], self.score_intervals[meas_source_index][index+1]) 
         if(index < len(self.score_intervals[meas_source_index]) - 1):
             assert(score <= self.score_intervals[meas_source_index][index+1]), (score, self.score_intervals[meas_source_index][index], self.score_intervals[meas_source_index][index+1])
@@ -143,10 +152,10 @@ def sample_and_reweight(particle, measurement_lists, \
     p_target_deaths = []
     for target in particle.targets.living_targets:
         p_target_deaths.append(target.death_prob)
-        assert(p_target_deaths[len(p_target_deaths) - 1] >= 0 and p_target_deaths[len(p_target_deaths) - 1] <= 1)
+        assert(p_target_deaths[len(p_target_deaths) - 1] >= 0 and p_target_deaths[len(p_target_deaths) - 1] <= 1), (p_target_deaths[len(p_target_deaths) - 1], cur_time)
 
 
-    (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs) = \
+    (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs, importance_reweight) = \
         sample_meas_assoc_and_death(particle, measurement_lists, particle.targets.living_count, p_target_deaths, \
                                     cur_time, measurement_scores, params)
 
@@ -157,31 +166,31 @@ def sample_and_reweight(particle, measurement_lists, \
         if(not i in targets_to_kill):
             living_target_indices.append(i)
 
-    exact_probability = 1.0
-    for meas_source_index in range(len(measurement_lists)):
-        cur_likelihood = get_likelihood(particle, meas_source_index, measurement_lists[meas_source_index], \
-            particle.targets.living_count, measurement_associations[meas_source_index],\
-            measurement_scores[meas_source_index], params)
-        cur_assoc_prior = get_assoc_prior(living_target_indices, particle.targets.living_count, len(measurement_lists[meas_source_index]), 
-                               measurement_associations[meas_source_index], measurement_scores[meas_source_index], params, meas_source_index)
-
-        exact_probability *= cur_likelihood * cur_assoc_prior
-
-
-    death_prior = calc_death_prior(living_target_indices, p_target_deaths)
-    exact_probability *= death_prior
+#    exact_probability = 1.0
+#    for meas_source_index in range(len(measurement_lists)):
+#        cur_likelihood = get_likelihood(particle, meas_source_index, measurement_lists[meas_source_index], \
+#            particle.targets.living_count, measurement_associations[meas_source_index],\
+#            measurement_scores[meas_source_index], params)
+#        cur_assoc_prior = get_assoc_prior(living_target_indices, particle.targets.living_count, len(measurement_lists[meas_source_index]), 
+#                               measurement_associations[meas_source_index], measurement_scores[meas_source_index], params, meas_source_index)
+#
+#        exact_probability *= cur_likelihood * cur_assoc_prior
+#
+#
+#    death_prior = calc_death_prior(living_target_indices, p_target_deaths)
+#    exact_probability *= death_prior
 
     assert(num_targs == particle.targets.living_count)
     #double check targets_to_kill is sorted
     assert(all([targets_to_kill[i] <= targets_to_kill[i+1] for i in xrange(len(targets_to_kill)-1)]))
 
-    imprt_re_weight = exact_probability/proposal_probability
+#    imprt_re_weight = exact_probability/proposal_probability
 
-    assert(imprt_re_weight != 0.0), (exact_probability, proposal_probability)
+#    assert(imprt_re_weight != 0.0), (exact_probability, proposal_probability)
 
-    particle.likelihood_DOUBLE_CHECK_ME = exact_probability
+#    particle.likelihood_DOUBLE_CHECK_ME = exact_probability
 
-    return (measurement_associations, targets_to_kill, imprt_re_weight)
+    return (measurement_associations, targets_to_kill, importance_reweight)
 
 def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count, 
                            p_target_deaths, cur_time, measurement_scores, params):
@@ -211,7 +220,7 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
     measurement_associations = []
     proposal_probability = 1.0
     for meas_source_index in range(len(measurement_lists)):
-        (cur_associations, cur_proposal_prob) = associate_measurements_sequentially\
+        (cur_associations, cur_proposal_prob, importance_reweight) = associate_measurements_sequentially\
             (particle, meas_source_index, measurement_lists[meas_source_index], \
              total_target_count, p_target_deaths, measurement_scores[meas_source_index],\
              params)
@@ -239,6 +248,7 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
     (targets_to_kill, death_probability) =  \
         sample_target_deaths(particle, unassociated_targets, cur_time)
 
+
     #probability of sampling all associations
     proposal_probability *= death_probability
     assert(proposal_probability != 0.0)
@@ -250,7 +260,7 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
                    measurement_associations[meas_source_index].count(i) == 1), (measurement_associations[meas_source_index],  measurement_list, total_target_count, p_target_deaths)
     #done debug
 
-    return (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs)
+    return (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs, importance_reweight)
 
 
 
@@ -273,13 +283,24 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
     - proposal_probability: proposal probability of the sampled deaths and associations
         
     """
+    pb = .01 #birth prior
+    birth_likelihood = .0159
+    if SCALED:
+        birth_likelihood = birth_likelihood/(600*180)
+#    birth_likelihood = 1.0/16.0 
+    CP = 0.0 #clutter prior
+    CD = 1.0/4.0 #clutter likelihood
+
+
     list_of_measurement_associations = []
     proposal_probability = 1.0
 
     #sample measurement associations
-    birth_count = [0 for i in range(len(params.score_intervals[meas_source_index]))]
-    clutter_count = [0 for i in range(len(params.score_intervals[meas_source_index]))]
+    birth_count = 0
+    clutter_count = 0
     remaining_meas_count = len(measurement_list)
+
+    importance_reweight = 1.0
 
     def get_remaining_meas_count(cur_meas_index, cur_meas_score):
         assert(len(measurement_scores) == len(measurement_list))
@@ -297,82 +318,71 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
         #create proposal distribution for the current measurement
         #compute target association proposal probabilities
         proposal_distribution_list = []
+        priors = []
+        likelihoods = []
         for target_index in range(total_target_count):
             cur_target_likelihood = memoized_assoc_likelihood(particle, cur_meas, meas_source_index, target_index, params, meas_score)
-            targ_likelihoods_summed_over_meas = 0.0
 
-            for meas_index in range(len(measurement_list)):
-                temp_score = measurement_scores[meas_index] #measurement score for the meas_index in this loop
-                targ_likelihoods_summed_over_meas += memoized_assoc_likelihood(particle, measurement_list[meas_index], meas_source_index, target_index, params, temp_score)
-            
-            if((targ_likelihoods_summed_over_meas != 0.0) and (not target_index in list_of_measurement_associations)\
+            if((not target_index in list_of_measurement_associations)\
                 and p_target_deaths[target_index] < 1.0):
-                cur_target_prior = params.emission_prior(meas_source_index, meas_score)*cur_target_likelihood \
-                                  /targ_likelihoods_summed_over_meas
+                cur_target_prior = (1-pb)*(1-CP)/total_target_count
             else:
                 cur_target_prior = 0.0
 
             proposal_distribution_list.append(cur_target_likelihood*cur_target_prior)
+            priors.append(cur_target_prior)
+            likelihoods.append(cur_target_likelihood)
 
 
-#        score_index = params.get_score_index(meas_score, meas_source_index)
-        remaining_meas_count_by_score = get_remaining_meas_count(index, meas_score)
         #compute birth association proposal probability
-        cur_birth_prior = 0.0
+        proposal_distribution_list.append(pb*birth_likelihood)
+        priors.append(pb)
+        likelihoods.append(birth_likelihood)
 
-        assert(params.get_score_index(meas_score, meas_source_index) < len(birth_count)), (params.get_score_index(meas_score, meas_source_index), len(birth_count))
-
-        for i in range(birth_count[params.get_score_index(meas_score, meas_source_index)]+1, min(params.max_birth_count(meas_source_index, meas_score) + 1, remaining_meas_count_by_score + birth_count[params.get_score_index(meas_score, meas_source_index)] + 2)):
-            cur_birth_prior += params.birth_prior(meas_source_index, meas_score, i)*(i - birth_count[params.get_score_index(meas_score, meas_source_index)])/(remaining_meas_count_by_score + 1)
-        proposal_distribution_list.append(cur_birth_prior*params.p_birth_likelihood)
-#        for i in range(birth_count+1, min(len(params.birth_probabilities[meas_source_index][score_index]), remaining_meas_count_by_score + birth_count + 1)):
-#            cur_birth_prior += params.birth_probabilities[meas_source_index][score_index][i]*(i - birth_count)/remaining_meas_count_by_score 
-#        proposal_distribution_list.append(cur_birth_prior*params.p_birth_likelihood)
-
-#        assert(len(params.birth_probabilities[meas_source_index][score_index]) == params.max_birth_count(meas_source_index, meas_score) + 1), (len(params.birth_probabilities[meas_source_index][score_index]), params.max_birth_count(meas_source_index, meas_score) + 1)
-
-        #compute clutter association proposal probability
         cur_clutter_prior = 0.0
-        for i in range(clutter_count[params.get_score_index(meas_score, meas_source_index)]+1, min(params.max_clutter_count(meas_source_index, meas_score) + 1, remaining_meas_count_by_score + clutter_count[params.get_score_index(meas_score, meas_source_index)] + 2)):
-            cur_clutter_prior += params.clutter_prior(meas_source_index, meas_score, i)*(i - clutter_count[params.get_score_index(meas_score, meas_source_index)])/(remaining_meas_count_by_score + 1)
-        proposal_distribution_list.append(cur_clutter_prior*params.p_clutter_likelihood)
-#        for i in range(clutter_count+1, min(len(params.clutter_probabilities[meas_source_index][score_index]), remaining_meas_count_by_score + clutter_count + 1)):
-#            cur_clutter_prior += params.clutter_probabilities[meas_source_index][score_index][i]*(i - clutter_count)/remaining_meas_count_by_score 
-#        proposal_distribution_list.append(cur_clutter_prior*params.p_clutter_likelihood)
-
-
+        proposal_distribution_list.append(CP*(1-pb)*CD)
+        priors.append(CP*(1-pb))
+        likelihoods.append(CD)
 
         #normalize the proposal distribution
         proposal_distribution = np.asarray(proposal_distribution_list)
         assert(np.sum(proposal_distribution) != 0.0), (index, remaining_meas_count, len(proposal_distribution), proposal_distribution, birth_count, clutter_count, len(measurement_list), total_target_count)
 
-
-
         proposal_distribution /= float(np.sum(proposal_distribution))
         assert(len(proposal_distribution) == total_target_count+2)
 
 
-        sampled_assoc_idx = np.random.choice(len(proposal_distribution),
-                                                p=proposal_distribution)
+        #ORIGINAL APPROACH BELOW
+        priors = np.asarray(priors)
+        priors /= float(np.sum(priors))
+        original_proposal_distr = np.multiply(priors, likelihoods)        
+        original_proposal_distr /= float(np.sum(original_proposal_distr))
 
+
+        sampled_assoc_idx = np.random.choice(len(original_proposal_distr),
+                                                p=original_proposal_distr)
+
+
+        importance_reweight = importance_reweight*likelihoods[sampled_assoc_idx]*\
+                              priors[sampled_assoc_idx]/original_proposal_distr[sampled_assoc_idx]
 
         if(sampled_assoc_idx <= total_target_count): #target or birth association
             list_of_measurement_associations.append(sampled_assoc_idx)
             if(sampled_assoc_idx == total_target_count):
-                birth_count[params.get_score_index(meas_score, meas_source_index)] += 1
+                birth_count += 1
         else: #clutter association
             assert(sampled_assoc_idx == total_target_count+1)
             list_of_measurement_associations.append(-1)
-            clutter_count[params.get_score_index(meas_score, meas_source_index)] += 1
+            clutter_count += 1
         proposal_probability *= proposal_distribution[sampled_assoc_idx]
 
         remaining_meas_count -= 1
 
-        assert(clutter_count[params.get_score_index(meas_score, meas_source_index)] <= params.max_clutter_count(meas_source_index, meas_score))
-        assert(birth_count[params.get_score_index(meas_score, meas_source_index)] <= params.max_birth_count(meas_source_index, meas_score)), (proposal_distribution, sampled_assoc_idx, birth_count, params.max_birth_count(meas_source_index, meas_score), index, remaining_meas_count, len(proposal_distribution), birth_count, clutter_count, len(measurement_list), total_target_count)
+#        assert(clutter_count <= params.max_clutter_count(meas_source_index, meas_score))
+#        assert(birth_count <= params.max_birth_count(meas_source_index, meas_score)), (birth_count, params.max_birth_count(meas_source_index, meas_score), index, remaining_meas_count, len(proposal_distribution), proposal_distribution, birth_count, clutter_count, len(measurement_list), total_target_count)
 
     assert(remaining_meas_count == 0)
-    return(list_of_measurement_associations, proposal_probability)
+    return(list_of_measurement_associations, proposal_probability, importance_reweight)
 
 
 def sample_target_deaths(particle, unassociated_targets, cur_time):
@@ -530,7 +540,7 @@ def get_assoc_prior(living_target_indices, total_target_count, number_measuremen
         total_target_count, measurement_associations)
 
 
-    params.check_counts(clutter_counts_by_score, birth_counts_by_score, meas_source_index)
+#    params.check_counts(clutter_counts_by_score, birth_counts_by_score, meas_source_index)
 
     #the prior probability of this number of measurements with these associations
     p_target_does_not_emit = 1.0 - sum(params.target_emission_probs[meas_source_index])
