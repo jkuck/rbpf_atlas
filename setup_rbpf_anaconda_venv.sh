@@ -1,7 +1,6 @@
 #!/bin/bash
 
-cd /atlas/u/jkuck/rbpf_atlas
-
+cd /atlas/u/jkuck/RANDOM_TEST_GIT_DIR/rbpf_atlas 
 
 PACKAGE_DIR=/atlas/u/jkuck/software
 export PATH=$PACKAGE_DIR/anaconda2/bin:$PATH

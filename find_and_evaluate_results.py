@@ -1,6 +1,6 @@
 import os
 
-DIRECTORY_TO_SEARCH = './results/KITTI_data1_online'
+DIRECTORY_TO_SEARCH = './results'
 
 
 def find_and_eval_results(directory_to_search, seq_idx_to_eval=[i for i in range(21)], info_by_run=None):
