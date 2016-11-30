@@ -41,12 +41,18 @@ from run_experiment_batch import CUR_EXPERIMENT_BATCH_NAME
 from run_experiment_batch import SEQUENCES_TO_PROCESS
 from run_experiment_batch import get_description_of_run
 
-from rbpf_ORIGINAL_sampling import sample_and_reweight
-from rbpf_ORIGINAL_sampling import Parameters
-from rbpf_ORIGINAL_sampling import SCALED
+#from rbpf_ORIGINAL_sampling import sample_and_reweight
+#from rbpf_ORIGINAL_sampling import Parameters
+#from rbpf_ORIGINAL_sampling import SCALED
+
+from rbpf_ORIGINAL_sampling_mult_meas import sample_and_reweight
+from rbpf_ORIGINAL_sampling_mult_meas import Parameters
+from rbpf_ORIGINAL_sampling_mult_meas import SCALED
+
+
 from gen_data import gen_data
 from gen_data import NUM_GEN_FRAMES
-from gen_data import NOISE_MAGNITUDE
+from gen_data import NOISE_SD
 
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
@@ -81,7 +87,7 @@ DEBUG = False
 USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check USE_CONSTANT_R
 
 #default time between succesive measurement time instances (in seconds)
-default_time_step = .1 
+default_time_step = .01 
 
 USE_CONSTANT_R = True
 #For testing why score interval for R are slow
@@ -132,13 +138,13 @@ p_birth_likelihood = 1.0/float(1242*375)
 #          9.90202440e+00]])
 
 if SCALED:
-    P_default = np.array([[(NOISE_MAGNITUDE*600)**2,      0,           0,  0],
+    P_default = np.array([[(NOISE_SD*600)**2,      0,           0,  0],
                           [0,          10*600**2,           0,  0],
-                          [0,           0,      (NOISE_MAGNITUDE*180)**2,  0],
+                          [0,           0,      (NOISE_SD*180)**2,  0],
                           [0,           0,           0, 10*180**2]])
 
-    R_default = np.array([[ (NOISE_MAGNITUDE*600)**2,             0.0],
-                          [          0.0,   (NOISE_MAGNITUDE*180)**2]])
+    R_default = np.array([[ (NOISE_SD*600)**2,             0.0],
+                          [          0.0,   (NOISE_SD*180)**2]])
     Q_default = np.array([[     (600**2)*0.00003333,    (600**2)*0.0050,         0,         0],
                           [         (600**2)*0.0050,       (600**2)*1.0,         0,         0],
                           [              0,         0,(180**2)*0.00003333,    (180**2)*0.0050],
@@ -146,13 +152,13 @@ if SCALED:
     Q_default = Q_default*10**(-3)
 
 else:
-    P_default = np.array([[(NOISE_MAGNITUDE)**2,    0,           0,  0],
+    P_default = np.array([[(NOISE_SD)**2,    0,           0,  0],
                           [0,          10,           0,  0],
-                          [0,           0,   (NOISE_MAGNITUDE)**2,  0],
+                          [0,           0,   (NOISE_SD)**2,  0],
                           [0,           0,           0, 10]])
 
-    R_default = np.array([[ (NOISE_MAGNITUDE)**2,             0.0],
-                          [      0.0,   (NOISE_MAGNITUDE)**2]])
+    R_default = np.array([[ (NOISE_SD)**2,             0.0],
+                          [      0.0,   (NOISE_SD)**2]])
     Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
                           [         0.0050,       1.0,         0,         0],
                           [              0,         0,0.00003333,    0.0050],
@@ -178,7 +184,7 @@ H = np.array([[1.0,  0.0, 0.0, 0.0],
 
 #Gamma distribution parameters for calculating target death probabilities
 alpha_death = 2.0
-beta_death = 1.0
+beta_death = 0.5
 theta_death = 1.0/beta_death
 
 print Q_default
@@ -257,7 +263,7 @@ class Target:
         self.death_prob = -1 #calculate at every time instance
 
         self.all_states = [(self.x, self.width, self.height)]
-        self.all_time_stamps = [round(cur_time, 1)]
+        self.all_time_stamps = [round(cur_time, 2)]
 
         self.measurements = []
         self.measurement_time_stamps = []
@@ -302,7 +308,7 @@ class Target:
         self.P = updated_P
         self.width = width
         self.height = height
-        assert(self.all_time_stamps[-1] == round(cur_time, 1) and self.all_time_stamps[-2] != round(cur_time, 1))
+        assert(self.all_time_stamps[-1] == round(cur_time, 2) and self.all_time_stamps[-2] != round(cur_time, 2))
         assert(self.x.shape == (4, 1)), (self.x.shape, np.dot(K, residual).shape)
 
         self.all_states[-1] = (self.x, self.width, self.height)
@@ -316,7 +322,7 @@ class Target:
             -dt: time step to run prediction on
             -cur_time: the time the prediction is made for
         """
-        assert(self.all_time_stamps[-1] == round((cur_time - dt), 1))
+        assert(self.all_time_stamps[-1] == round((cur_time - dt), 2))
         F = np.array([[1.0,  dt, 0.0, 0.0],
                       [0.0, 1.0, 0.0, 0.0],
                       [0.0, 0.0, 1.0,  dt],
@@ -326,7 +332,7 @@ class Target:
         self.x = x_predict
         self.P = P_predict
         self.all_states.append((self.x, self.width, self.height))
-        self.all_time_stamps.append(round(cur_time, 1))
+        self.all_time_stamps.append(round(cur_time, 2))
 
         if(self.x[0][0]<0 or self.x[0][0]>=CAMERA_PIXEL_WIDTH or \
            self.x[2][0]<0 or self.x[2][0]>=CAMERA_PIXEL_HEIGHT):
@@ -387,22 +393,24 @@ class Target:
             #scipy.special.gdtrc(b, a, x) calculates 
             #integral(gamma_dist(k = a, theta = b))from x to infinity
             last_assoc = self.last_measurement_association
-            if USE_GENERATED_DATA:
-                cur_time = cur_time/10.0
-                prev_time = prev_time/10.0
-                last_assoc = self.last_measurement_association/10.0
+#            if USE_GENERATED_DATA:
+#                cur_time = cur_time/10.0
+#                prev_time = prev_time/10.0
+#                last_assoc = self.last_measurement_association/10.0
 
-            #I think this is correct
-            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
-                     - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
-            death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
+#            #I think this is correct
+#            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
+#                     - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+#            death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
 #            return death_prob
 
-#            #this is used in paper's code
-#            time_step = cur_time - prev_time
-#            death_prob = gdtrc(theta_death, alpha_death, cur_time - last_assoc) \
-#                       - gdtrc(theta_death, alpha_death, cur_time - last_assoc + time_step)
-#            death_prob /= gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+            #this is used in paper's code
+            #Basically this is predicting death over the next time step, as opposed
+            #to over the previous time step, which is what I wrote above
+            time_step = cur_time - prev_time
+            death_prob = gdtrc(theta_death, alpha_death, cur_time - last_assoc) \
+                       - gdtrc(theta_death, alpha_death, cur_time - last_assoc + time_step)
+            death_prob /= gdtrc(theta_death, alpha_death, cur_time - last_assoc)
 
             assert(death_prob >= 0.0 and death_prob <= 1.0), (death_prob, cur_time, prev_time)
 
@@ -558,7 +566,7 @@ class TargetSet:
 
         if ONLINE_DELAY == 0:
             for target in self.living_targets:
-                assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 1))
+                assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                 x_pos = target.all_states[-1][0][0][0]
                 y_pos = target.all_states[-1][0][2][0]
                 width = target.all_states[-1][1]
@@ -578,7 +586,7 @@ class TargetSet:
             print delayed_liv_targets
             assert(delayed_frame_idx == frame_idx - ONLINE_DELAY), (delayed_frame_idx, frame_idx, ONLINE_DELAY)
             for target in delayed_liv_targets:
-                assert(target.all_time_stamps[-1] == round((frame_idx - ONLINE_DELAY)*default_time_step, 1)), (target.all_time_stamps[-1], frame_idx, ONLINE_DELAY, round((frame_idx - ONLINE_DELAY)*default_time_step, 1))
+                assert(target.all_time_stamps[-1] == round((frame_idx - ONLINE_DELAY)*default_time_step, 2)), (target.all_time_stamps[-1], frame_idx, ONLINE_DELAY, round((frame_idx - ONLINE_DELAY)*default_time_step, 2))
                 x_pos = target.all_states[-1][0][0][0]
                 y_pos = target.all_states[-1][0][2][0]
                 width = target.all_states[-1][1]
@@ -604,7 +612,7 @@ class TargetSet:
                     q_idx+=1
                     assert(delayed_frame_idx == cur_frame_idx), (delayed_frame_idx, cur_frame_idx, ONLINE_DELAY)
                     for target in delayed_liv_targets:
-                        assert(target.all_time_stamps[-1] == round((cur_frame_idx)*default_time_step, 1))
+                        assert(target.all_time_stamps[-1] == round((cur_frame_idx)*default_time_step, 2))
                         x_pos = target.all_states[-1][0][0][0]
                         y_pos = target.all_states[-1][0][2][0]
                         width = target.all_states[-1][1]
@@ -617,7 +625,7 @@ class TargetSet:
                         f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
                             (cur_frame_idx, target.id_, left, top, right, bottom))
                 for target in self.living_targets:
-                    assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 1))
+                    assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                     x_pos = target.all_states[-1][0][0][0]
                     y_pos = target.all_states[-1][0][2][0]
                     width = target.all_states[-1][1]
@@ -639,7 +647,7 @@ class TargetSet:
             every_target = self.collect_ancestral_targets()
             f = open(results_filename, "w")
             for frame_idx in range(num_frames):
-                timestamp = round(frame_idx*default_time_step, 1)
+                timestamp = round(frame_idx*default_time_step, 2)
 
                 for target in every_target:
                     if timestamp in target.all_time_stamps:
@@ -663,7 +671,7 @@ class TargetSet:
         else:
             f = open(results_filename, "w")
             for frame_idx in range(num_frames):
-                timestamp = round(frame_idx*default_time_step, 1)
+                timestamp = round(frame_idx*default_time_step, 2)
                 for target in self.all_targets:
                     if timestamp in target.all_time_stamps:
                         x_pos = target.all_states[target.all_time_stamps.index(timestamp)][0][0][0]
@@ -1305,6 +1313,8 @@ def match_target_ids(particle1_targets, particle2_targets):
 
 if __name__ == "__main__":
     
+    print "HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+
     NEXT_PARTICLE_ID = 0
     if RUN_ONLINE:
         NEXT_TARGET_ID = 0 #all targets have unique IDs, even if they are in different particles
@@ -1458,10 +1468,11 @@ if __name__ == "__main__":
         tA = time.time()
         if USE_GENERATED_DATA:
             meas_target_set = gen_data(measurements_filename)
-            (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
+            #(estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
+            cProfile.run('run_rbpf_on_targetset([meas_target_set], results_filename, params)')
         else:       
             (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)
-        #cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
+            #cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
         print "done processing sequence: ", seq_idx
         
         tB = time.time()

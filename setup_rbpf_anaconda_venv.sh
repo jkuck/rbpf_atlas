@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /atlas/u/jkuck/RANDOM_TEST_GIT_DIR/rbpf_atlas 
+cd /atlas/u/jkuck/rbpf_atlas 
 
 PACKAGE_DIR=/atlas/u/jkuck/software
 export PATH=$PACKAGE_DIR/anaconda2/bin:$PATH
@@ -18,6 +18,9 @@ source activate anaconda_venv
 echo "Using python from:"
 which python
 echo "------------------------------------------------------------"
+
+echo "pwd:"
+pwd
 
 python rbpf_KITTI_det_scores.py $num_particles $include_ignored_gt $include_dontcare_in_gt $use_regionlets_and_lsvm $sort_dets_on_intervals $RUN_IDX $NUM_RUNS $SEQ_IDX
 

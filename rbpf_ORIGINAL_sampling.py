@@ -5,7 +5,7 @@ import random
 import math
 
 from gen_data import SCALED
-from gen_data import NOISE_MAGNITUDE
+from gen_data import NOISE_SD
 
 
 class Parameters:
@@ -26,11 +26,11 @@ class Parameters:
 
         self.meas_noise_cov = None
         if SCALED:
-            self.R_default = np.array([[ (NOISE_MAGNITUDE*600)**2,             0.0],
-                                       [          0.0,   (NOISE_MAGNITUDE*180)**2]])
+            self.R_default = np.array([[ (NOISE_SD*600)**2,             0.0],
+                                       [          0.0,   (NOISE_SD*180)**2]])
         else:
-            self.R_default = np.array([[ (NOISE_MAGNITUDE)**2,         0.0],
-                                       [      0.0,   (NOISE_MAGNITUDE)**2]])
+            self.R_default = np.array([[ (NOISE_SD)**2,         0.0],
+                                       [      0.0,   (NOISE_SD)**2]])
 
         self.H = H
 
@@ -166,19 +166,6 @@ def sample_and_reweight(particle, measurement_lists, \
         if(not i in targets_to_kill):
             living_target_indices.append(i)
 
-#    exact_probability = 1.0
-#    for meas_source_index in range(len(measurement_lists)):
-#        cur_likelihood = get_likelihood(particle, meas_source_index, measurement_lists[meas_source_index], \
-#            particle.targets.living_count, measurement_associations[meas_source_index],\
-#            measurement_scores[meas_source_index], params)
-#        cur_assoc_prior = get_assoc_prior(living_target_indices, particle.targets.living_count, len(measurement_lists[meas_source_index]), 
-#                               measurement_associations[meas_source_index], measurement_scores[meas_source_index], params, meas_source_index)
-#
-#        exact_probability *= cur_likelihood * cur_assoc_prior
-#
-#
-#    death_prior = calc_death_prior(living_target_indices, p_target_deaths)
-#    exact_probability *= death_prior
 
     assert(num_targs == particle.targets.living_count)
     #double check targets_to_kill is sorted
@@ -427,170 +414,6 @@ def calc_death_prior(living_target_indices, p_target_deaths):
 
     return death_prior
 
-#TAKE params instead of all this stuff!!!!!!
-def get_assoc_prior(living_target_indices, total_target_count, number_measurements, 
-             measurement_associations, measurement_scores, params,\
-             meas_source_index):
-    """
-    REDOCUMENT
-
-    *question* is this the prior given the number of measurements or not given
-    the number of measurements??!!
-
-
-    Input: 
-    - living_target_indices: a list of indices of targets from last time instance that are still alive
-    - total_target_count: the number of living targets on the previous time instace
-    - number_measurements: the number of measurements on this time instance
-    - measurement_associations: a list of association values for each measurement. Each association has the value
-        of a living target index (index from last time instance), target birth (total_target_count), 
-        or clutter (-1)
-    -p_target_emission: the probability that a target will emit a measurement on a 
-        time instance (the same for all targets and time instances)
-    -birth_count_prior: a probability distribution, specified as a list, such that
-        birth_count_prior[i] = the probability of i births during any time instance
-    -clutter_count_prior: a probability distribution, specified as a list, such that
-        clutter_count_prior[i] = the probability of i clutter measurements during 
-        any time instance
-    """
-
-    def nCr(n,r):
-        return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
-
-    def count_meas_orderings(M, T, b, c):
-        """
-        We define target observation priors in terms of whether each target was observed and it
-        is irrelevant which measurement the target is associated with.  Likewise, birth count priors
-        and clutter count priors are defined in terms of total counts, not which specific measurements
-        are associated with clutter and births.  This function counts the number of possible 
-        measurement-association assignments given we have already chosen which targets are observed, 
-        how many births occur, and how many clutter measurements are present.  The prior probability of
-        observing T specific targets, b births, and c clutter observations given M measurements should
-        be divided by the returned value to split the prior probability between possibilities.
-
-        [
-        *OLD EXPLANATION BELOW*:
-        We view the the ordering of measurements on any time instance as arbitrary.  This
-        function counts the number of possible measurement orderings given we have already
-        chosen which targets are observed, how many births occur, and how many clutter 
-        measurements are present.
-        ]
-        
-        Inputs:
-        - M: the number of measurements
-        - T: the number of observed targets
-        - b: the number of birth associations
-        - c: the number of clutter associations
-
-        This must be true: M = T+b+c
-
-        Output:
-        - combinations: the number of measurement orderings as a float. The value is:
-            combinations = nCr(M, T)*math.factorial(T)*nCr(M-T, b)
-
-        """
-        assert(M == T + b + c)
-        combinations = nCr(M, T)*math.factorial(T)*nCr(M-T, b)
-        return float(combinations)
-
-
-    assert(len(measurement_associations) == number_measurements), (number_measurements, len(measurement_associations), measurement_associations)
-    #numnber of targets from the last time instance that are still alive
-    living_target_count = len(living_target_indices)
-    #numnber of targets from the last time instance that died
-    dead_target_count = total_target_count - living_target_count
-
-    #count the number of unique target associations
-    unique_assoc = set(measurement_associations)
-    if(total_target_count in unique_assoc):
-        unique_assoc.remove(total_target_count)
-    if((-1) in unique_assoc):
-        unique_assoc.remove((-1))
-
-    #the number of targets we observed on this time instance
-    observed_target_count = len(unique_assoc)
-
-    #the number of target measurements by measurement score
-    meas_counts_by_score = [0 for i in range(len(params.score_intervals[meas_source_index]))]
-    for i in range(len(measurement_associations)):
-        if measurement_associations[i] != -1 and measurement_associations[i] != total_target_count:
-            index = params.get_score_index(measurement_scores[i], meas_source_index)
-            meas_counts_by_score[index] += 1
-
-    #the number of targets we don't observe on this time instance
-    #but are still alive on this time instance
-    unobserved_target_count = living_target_count - observed_target_count
-    #the number of new targets born on this time instance
-    birth_count = measurement_associations.count(total_target_count)
-    birth_counts_by_score = [0 for i in range(len(params.score_intervals[meas_source_index]))]
-    for i in range(len(measurement_associations)):
-        if measurement_associations[i] == total_target_count:
-            index = params.get_score_index(measurement_scores[i], meas_source_index)
-            birth_counts_by_score[index] += 1
-    #the number of clutter measurements on this time instance
-    clutter_count = measurement_associations.count(-1)
-    clutter_counts_by_score = [0 for i in range(len(params.score_intervals[meas_source_index]))]
-    for i in range(len(measurement_associations)):
-        if measurement_associations[i] == -1:
-            index = params.get_score_index(measurement_scores[i], meas_source_index)
-            clutter_counts_by_score[index] += 1
-
-    assert(observed_target_count + birth_count + clutter_count == number_measurements),\
-        (number_measurements, observed_target_count, birth_count, clutter_count, \
-        total_target_count, measurement_associations)
-
-
-#    params.check_counts(clutter_counts_by_score, birth_counts_by_score, meas_source_index)
-
-    #the prior probability of this number of measurements with these associations
-    p_target_does_not_emit = 1.0 - sum(params.target_emission_probs[meas_source_index])
-    assoc_prior = (p_target_does_not_emit)**(unobserved_target_count) \
-                  /count_meas_orderings(number_measurements, observed_target_count, \
-                                        birth_count, clutter_count)
-    for i in range(len(params.score_intervals[meas_source_index])):
-        assoc_prior *= params.target_emission_probs[meas_source_index][i]**(meas_counts_by_score[i]) \
-                          *params.birth_probabilities[meas_source_index][i][birth_counts_by_score[i]] \
-                          *params.clutter_probabilities[meas_source_index][i][clutter_counts_by_score[i]] \
-
-    return assoc_prior
-
-def get_likelihood(particle, meas_source_index, measurement_list, total_target_count,
-                   measurement_associations, measurement_scores, params):
-    """
-    REDOCUMENT, BELOW INCORRECT, not including death probability now
-    Calculate p(data, associations, #measurements, deaths) as:
-    p(data|deaths, associations, #measurements)*p(deaths)*p(associations, #measurements|deaths)
-    Input:
-    - particle: type Particle, we will perform sampling and importance reweighting on this particle             
-    - measurement_list: a list of all measurements from the current time instance, from the measurement
-        source with index meas_source_index
-    - total_target_count: the number of living targets on the previous time instace
-    - measurement_associations: a list of association values for each measurement. Each association has the value
-        of a living target index (index from last time instance), target birth (total_target_count), 
-        or clutter (-1)
-    - params: type Parameters, gives prior probabilities and other parameters we are using
-
-    Return:
-    - p(data, associations, #measurements, deaths)
-
-    """
-
-    likelihood = 1.0
-    assert(len(measurement_associations) == len(measurement_list))
-    for meas_index, meas_association in enumerate(measurement_associations):
-        if(meas_association == total_target_count): #birth
-            likelihood *= params.p_birth_likelihood
-        elif(meas_association == -1): #clutter
-            likelihood *= params.p_clutter_likelihood
-        else:
-            assert(meas_association >= 0 and meas_association < total_target_count), (meas_association, total_target_count)
-            meas_score = measurement_scores[meas_index]
-            likelihood *= memoized_assoc_likelihood(particle, measurement_list[meas_index], meas_source_index, \
-                                                         meas_association, params, meas_score)
-
-    assert(likelihood != 0.0), (likelihood)
-
-    return likelihood
 
 def memoized_assoc_likelihood(particle, measurement, meas_source_index, target_index, params, meas_score):
     """

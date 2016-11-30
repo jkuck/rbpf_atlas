@@ -11,7 +11,7 @@ NUM_PARTICLES_TO_TEST = [100]
 DIRECTORY_OF_ALL_RESULTS = './results'
 #CUR_EXPERIMENT_BATCH_NAME = 'gen_data'
 
-CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_scaled_SD-01_dup'
+CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_verShortTest'
 
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
