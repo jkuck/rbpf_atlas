@@ -5,17 +5,19 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-SCALED = False
+SCALED = True
 ONE_MEAS_PER_TIME = False
 WITH_NOISE = True
 NOISE_SD = .05 #Standard deviation of noise, before scaling
 NUM_GEN_FRAMES = 500
-TEST_SHORT_SEGMENT = True
+TEST_SHORT_SEGMENT = False
 
 ADD_CLUTTER = True
 #Clutter count for a given time step will be drawn from a Poisson distribution with expectation CLUTTER_LAMBDA
 CLUTTER_LAMBDA = 10 
 SHUFFLE_MEASUREMENTS = True
+
+prob_detection = 0.95
 
 default_time_step = 0.01 
 
@@ -89,17 +91,17 @@ def gen_data(measurement_plot_filename):
                 y4 = 90*(2*(0.0) + NOISE_SD*np.random.normal(0, 1)) + 200
 
             else:
-                x1 = 2*(-math.sin(2*math.pi*i/500)) + NOISE_SD*np.random.normal(0, 1)
-                y1 = 2*(-math.cos(2*math.pi*i/500)) + NOISE_SD*np.random.normal(0, 1)
+                x1 = (-math.sin(2*math.pi*i/500)) + NOISE_SD*np.random.normal(0, 1)
+                y1 = (-math.cos(2*math.pi*i/500)) + NOISE_SD*np.random.normal(0, 1)
     
-                x2 = 2*(math.sin(math.pi*i/500 - math.pi/2)) + NOISE_SD*np.random.normal(0, 1)
-                y2 = 2*(-1.0 + math.cos(math.pi*i/500 - math.pi/2)) + NOISE_SD*np.random.normal(0, 1)
+                x2 = (math.sin(math.pi*i/500 - math.pi/2)) + NOISE_SD*np.random.normal(0, 1)
+                y2 = (-1.0 + math.cos(math.pi*i/500 - math.pi/2)) + NOISE_SD*np.random.normal(0, 1)
     
-                x3 = 2*(0.0) + NOISE_SD*np.random.normal(0, 1)
-                y3 = 2*(1.0 - 2.0*i/500) + NOISE_SD*np.random.normal(0, 1)
+                x3 = (0.0) + NOISE_SD*np.random.normal(0, 1)
+                y3 = (1.0 - 2.0*i/500) + NOISE_SD*np.random.normal(0, 1)
                 
-                x4 = 2*(1.0 - 2.0*i/500) + NOISE_SD*np.random.normal(0, 1)
-                y4 = 2*(0.0) + NOISE_SD*np.random.normal(0, 1)
+                x4 = (1.0 - 2.0*i/500) + NOISE_SD*np.random.normal(0, 1)
+                y4 = (0.0) + NOISE_SD*np.random.normal(0, 1)
         else:
             x1 = (-math.sin(2*math.pi*i/500))
             y1 = (-math.cos(2*math.pi*i/500))
@@ -116,16 +118,17 @@ def gen_data(measurement_plot_filename):
 
         cur_meas = Measurement()
 
-        if i > 100 and i < 400:
+        if i > 100 and i < 400 and random.random() < prob_detection:
             cur_meas.val.append(np.array([x1, y1]))
 
-        if i < 300:
+        if i < 300 and random.random() < prob_detection:
             cur_meas.val.append(np.array([x2, y2]))
 
-        if i < 400:    
+        if i < 400 and random.random() < prob_detection:    
             cur_meas.val.append(np.array([x3, y3]))
 
-        cur_meas.val.append(np.array([x4, y4]))
+        if random.random() < prob_detection:
+            cur_meas.val.append(np.array([x4, y4]))
 
         if ADD_CLUTTER:
             clutter_count = np.random.poisson(CLUTTER_LAMBDA, 1)[0]
@@ -161,12 +164,6 @@ def gen_data(measurement_plot_filename):
         cur_meas.time = i*default_time_step
 
         returnTargetSet.measurements.append(cur_meas)
-        print "i =", i
-        print "len(returnTargetSet.measurements) =", len(returnTargetSet.measurements)
-        if(i>0):
-            assert(len(returnTargetSet.measurements) >= 2), (len(returnTargetSet.measurements))
-
-            assert(returnTargetSet.measurements[-1].time != returnTargetSet.measurements[-2].time), (returnTargetSet.measurements[-1].time, returnTargetSet.measurements[-2].time)
 
     #plot measurements
     fig = plt.figure()

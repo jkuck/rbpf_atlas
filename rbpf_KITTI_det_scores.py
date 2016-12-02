@@ -58,7 +58,7 @@ from gen_data import NOISE_SD
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
-
+PROFILE = False
 USE_GENERATED_DATA = True
 
 USE_RANDOM_SEED = False
@@ -80,7 +80,7 @@ FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False
 MAX_1_MEAS_UPDATE = True
 
 
-RESAMPLE_RATIO = 2.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
+RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
 DEBUG = False
 
@@ -138,17 +138,17 @@ p_birth_likelihood = 1.0/float(1242*375)
 #          9.90202440e+00]])
 
 if SCALED:
-    P_default = np.array([[(NOISE_SD*600)**2,      0,           0,  0],
-                          [0,          10*600**2,           0,  0],
-                          [0,           0,      (NOISE_SD*180)**2,  0],
-                          [0,           0,           0, 10*180**2]])
+    P_default = np.array([[(NOISE_SD*300)**2,      0,           0,  0],
+                          [0,          10*300**2,           0,  0],
+                          [0,           0,      (NOISE_SD*90)**2,  0],
+                          [0,           0,           0, 10*90**2]])
 
-    R_default = np.array([[ (NOISE_SD*600)**2,             0.0],
-                          [          0.0,   (NOISE_SD*180)**2]])
-    Q_default = np.array([[     (600**2)*0.00003333,    (600**2)*0.0050,         0,         0],
-                          [         (600**2)*0.0050,       (600**2)*1.0,         0,         0],
-                          [              0,         0,(180**2)*0.00003333,    (180**2)*0.0050],
-                          [              0,         0,    (180**2)*0.0050,    (180**2)*1.0000]])
+    R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
+                          [          0.0,   (NOISE_SD*90)**2]])
+    Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0050,         0,         0],
+                          [         (300**2)*0.0050,       (300**2)*1.0,         0,         0],
+                          [              0,         0,(90**2)*0.00003333,    (90**2)*0.0050],
+                          [              0,         0,    (90**2)*0.0050,    (90**2)*1.0000]])
     Q_default = Q_default*10**(-3)
 
 else:
@@ -184,7 +184,8 @@ H = np.array([[1.0,  0.0, 0.0, 0.0],
 
 #Gamma distribution parameters for calculating target death probabilities
 alpha_death = 2.0
-beta_death = 0.5
+#beta_death = 0.5
+beta_death = 1.0
 theta_death = 1.0/beta_death
 
 print Q_default
@@ -734,6 +735,9 @@ class Particle:
         self.pi_clutter_debug = -1
         self.pi_targets_debug = []
 
+        #bool for debugging, indicating maximum importance weight from previous time instance
+        self.max_importance_weight = False 
+
     def create_child(self):
         global NEXT_PARTICLE_ID
         child_particle = Particle(NEXT_PARTICLE_ID)
@@ -1097,6 +1101,19 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
 
         iter+=1
         print "finished the time step"
+#DEBUGGING        
+        cur_max_imprt_weight = -1
+        for particle in particle_set:
+            particle.max_importance_weight = False
+            if(particle.importance_weight > cur_max_imprt_weight):
+                cur_max_imprt_weight = particle.importance_weight
+        particle_count_with_max_imprt_weight = 0
+        for particle in particle_set:
+            if(particle.importance_weight == cur_max_imprt_weight):
+                particle.max_importance_weight = True
+                particle_count_with_max_imprt_weight += 1
+        print particle_count_with_max_imprt_weight, "particles have max importance weight of", cur_max_imprt_weight
+#END DEBUGGING
 
     max_imprt_weight = -1
     for particle in particle_set:
@@ -1468,11 +1485,15 @@ if __name__ == "__main__":
         tA = time.time()
         if USE_GENERATED_DATA:
             meas_target_set = gen_data(measurements_filename)
-            #(estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
-            cProfile.run('run_rbpf_on_targetset([meas_target_set], results_filename, params)')
+            if PROFILE: 
+                cProfile.run('run_rbpf_on_targetset([meas_target_set], results_filename, params)')
+            else:
+                (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
         else:       
-            (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)
-            #cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
+            if PROFILE:
+                cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
+            else:
+                (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)
         print "done processing sequence: ", seq_idx
         
         tB = time.time()
