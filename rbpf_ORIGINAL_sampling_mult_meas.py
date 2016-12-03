@@ -28,12 +28,13 @@ class Parameters:
         self.birth_probabilities = birth_probabilities
 
         self.meas_noise_cov = None
-        if SCALED:
-            self.R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
-                                       [          0.0,   (NOISE_SD*90)**2]])
-        else:
-            self.R_default = np.array([[ (NOISE_SD)**2,         0.0],
-                                       [      0.0,   (NOISE_SD)**2]])
+        self.R_default = R_default
+#        if SCALED:
+#            self.R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
+#                                       [          0.0,   (NOISE_SD*90)**2]])
+#        else:
+#            self.R_default = np.array([[ (NOISE_SD)**2,         0.0],
+#                                       [      0.0,   (NOISE_SD)**2]])
 
         self.H = H
 
