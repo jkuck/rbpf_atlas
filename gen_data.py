@@ -19,7 +19,7 @@ SHUFFLE_MEASUREMENTS = True
 
 prob_detection = 0.95
 
-default_time_step = 0.01 
+default_time_step = 0.1 
 
 class Measurement:
     #a collection of measurements at a single time instance

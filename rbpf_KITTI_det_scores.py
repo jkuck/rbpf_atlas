@@ -59,7 +59,7 @@ DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
 PROFILE = False
-USE_GENERATED_DATA = True
+USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
 PLOT_TARGET_LOCATIONS = True
@@ -88,7 +88,7 @@ DEBUG = False
 USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check USE_CONSTANT_R
 
 #default time between succesive measurement time instances (in seconds)
-default_time_step = .01 
+default_time_step = .1 
 TIME_SCALED = False
 
 USE_CONSTANT_R = True
