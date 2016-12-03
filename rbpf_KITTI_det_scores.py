@@ -68,7 +68,7 @@ if USE_RANDOM_SEED:
     np.random.seed(seed=5)
     
 USE_LEARNED_KF_PARAMS = True
-USE_POISSON_DEATH_MODEL = True
+USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
