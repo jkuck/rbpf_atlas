@@ -410,9 +410,9 @@ class Target:
             #integral(gamma_dist(k = a, theta = b))from x to infinity
             last_assoc = self.last_measurement_association
 #            if USE_GENERATED_DATA:
-                cur_time = cur_time/10.0
-                prev_time = prev_time/10.0
-                last_assoc = self.last_measurement_association/10.0
+            cur_time = cur_time/10.0
+            prev_time = prev_time/10.0
+            last_assoc = self.last_measurement_association/10.0
 
 #            #I think this is correct
 #            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
