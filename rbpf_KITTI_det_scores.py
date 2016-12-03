@@ -88,6 +88,7 @@ USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check U
 
 #default time between succesive measurement time instances (in seconds)
 default_time_step = .01 
+TIME_SCALED = False
 
 USE_CONSTANT_R = True
 #For testing why score interval for R are slow
@@ -150,6 +151,12 @@ if SCALED:
                           [              0,         0,(90**2)*0.00003333,    (90**2)*0.0050],
                           [              0,         0,    (90**2)*0.0050,    (90**2)*1.0000]])
     Q_default = Q_default*10**(-3)
+    if TIME_SCALED:
+        Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0005,         0,         0],
+                              [         (300**2)*0.0005,       (300**2)*.01,         0,         0],
+                              [              0,         0,(90**2)*0.00003333,    (90**2)*0.0005],
+                              [              0,         0,    (90**2)*0.0005,    (90**2)*.01]])    
+
 
 else:
     P_default = np.array([[(NOISE_SD)**2,    0,           0,  0],
@@ -164,6 +171,12 @@ else:
                           [              0,         0,0.00003333,    0.0050],
                           [              0,         0,    0.0050,    1.0000]])
     Q_default = Q_default*10**(-3)
+
+    if TIME_SCALED:
+        Q_default = np.array([[     0.00003333,    0.0005,         0,         0],
+                              [         0.0005,       .01,         0,         0],
+                              [              0,         0,0.00003333,    0.0005],
+                              [              0,         0,    0.0005,    .01]])  
 
 #learned from all GT
 #Q_default = np.array([[     0.0000,         0,    0.0050,         0],
@@ -1330,7 +1343,6 @@ def match_target_ids(particle1_targets, particle2_targets):
 
 if __name__ == "__main__":
     
-    print "HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!HI!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 
     NEXT_PARTICLE_ID = 0
     if RUN_ONLINE:
