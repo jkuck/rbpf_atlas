@@ -59,7 +59,7 @@ DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
 PROFILE = False
-USE_GENERATED_DATA = True
+USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
 PLOT_TARGET_LOCATIONS = True
