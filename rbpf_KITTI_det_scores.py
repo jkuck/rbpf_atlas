@@ -350,6 +350,36 @@ class Target:
 		assert(self.x.shape == (4, 1))
 		self.updated_this_time_instance = False
 
+	def lstm_predict(self, model, dt, cur_time):
+		"""
+		Run lstm prediction on this target
+		Inputs:
+			-model: the pretrained lstm model
+			-dt: time step to run prediction on
+			-cur_time: the time the prediction is made for
+		"""
+		assert(self.all_time_stamps[-1] == round((cur_time - dt), 1))
+		if len(self.all_states) < 3:
+			F = np.array([[1.0,  dt, 0.0, 0.0],
+			      		  [0.0, 1.0, 0.0, 0.0],
+	                      [0.0, 0.0, 1.0,  dt],
+	                      [0.0, 0.0, 0.0, 1.0]])
+			x_predict = np.dot(F, self.x)
+			P_predict = np.dot(np.dot(F, self.P), F.T) + Q_default
+			self.x = x_predict
+			self.P = P_predict
+			self.all_states.append((self.x, self.width, self.height))
+			self.all_time_stamps.append(round(cur_time, 1))
+
+			if(self.x[0][0]<0 or self.x[0][0]>=CAMERA_PIXEL_WIDTH or \
+			   self.x[2][0]<0 or self.x[2][0]>=CAMERA_PIXEL_HEIGHT):
+	#			print '!'*40, "TARGET IS OFFSCREEN", '!'*40
+				self.offscreen = True
+
+			assert(self.x.shape == (4, 1))
+			self.updated_this_time_instance = False
+		else:
+			pass
 
 
 ###################	def target_death_prob(self, cur_time, prev_time):
@@ -1599,6 +1629,20 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 		NEXT_PARTICLE_ID += 1
 	prev_time_stamp = -1
 
+	#################################
+	# Dan Iter - This may not be the best place for this, but let's do it here
+	# since it's close to where run_rbpf_on_targetset() is called
+	from keras.models import Sequential
+	from keras.layers import Dense
+	from keras.layers import LSTM
+	from sklearn.preprocessing import MinMaxScaler
+	model = Sequential()
+	model.add(LSTM(4, input_shape=(3,2)))
+	model.add(Dense(2))
+	model.compile(loss='mean_squared_error', optimizer='adam')
+	model.load_weights('window3_weights.h5', by_name=True)
+	#################################
+
 
 	#for displaying results
 	time_stamps = []
@@ -1653,6 +1697,7 @@ def run_rbpf_on_targetset(target_sets, online_results_filename):
 					dt = time_stamp - prev_time_stamp
 					assert(abs(dt - default_time_step) < .00000001), (dt, default_time_step)
 					target.kf_predict(dt, time_stamp)
+					target.lstm_predict(model, dt, time_stamp)
 				#update particle death probabilities AFTER kf_predict so that targets that moved
 				#off screen this time instance will be killed
 				particle.update_target_death_probabilities(time_stamp, prev_time_stamp)
@@ -2324,8 +2369,6 @@ if __name__ == "__main__":
 			results_filename = '%s/results_by_run/run_%d/%s.txt' % (results_folder, run_idx, sequence_name[seq_idx])
 
 			debugInfLoopFile = '%s/results_by_run/run_%d/debugInfLoop.txt' % (results_folder, run_idx)	
-
-
 
 			print "Processing sequence: ", seq_idx
 			tA = time.time()
