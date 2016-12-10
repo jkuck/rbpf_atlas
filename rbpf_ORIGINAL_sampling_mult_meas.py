@@ -8,7 +8,8 @@ from scipy.special import gdtrc
 
 from gen_data import SCALED
 from gen_data import NOISE_SD
-from gen_data import default_time_step
+#from gen_data import default_time_step
+default_time_step = .01
 from gen_data import prob_detection
 
 class Parameters:
@@ -261,6 +262,11 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 #        """
 #        hh = ss.binom(n, p)
 #        return hh.pmf(x)    
+    #avoid 0/0 = nan below
+    for i in range(len(p_target_deaths)):
+        if p_target_deaths[i] == 1.0:
+            p_target_deaths[i] = .999999
+
     if(particle.max_importance_weight):
         print "number of measurements:", len(measurement_list)
 
@@ -436,10 +442,11 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
         assert(len(priors) == len(events))
         assert(len(priors) == (2 + unas_living_targ_count + 2*cur_living_targ_count + unas_living_targ_count*(cur_living_targ_count-1))), (len(priors), unas_living_targ_count, cur_living_targ_count, total_target_count)
         priors = np.asarray(priors)
+        debug_priors = priors
         assert(float(np.sum(priors)) > 0), (priors, total_target_count, remaining_meas_count, len(measurement_list), cur_living_targ_count, unas_living_targ_count)
         priors /= float(np.sum(priors))
         original_proposal_distr = np.multiply(priors, likelihoods)   
-        assert(float(np.sum(original_proposal_distr)) > 0), (priors, total_target_count, remaining_meas_count, len(measurement_list), cur_living_targ_count, unas_living_targ_count)             
+        assert(float(np.sum(original_proposal_distr)) > 0), (priors, debug_priors, likelihoods, original_proposal_distr, total_target_count, remaining_meas_count, len(measurement_list), cur_living_targ_count, unas_living_targ_count)             
         original_proposal_distr /= float(np.sum(original_proposal_distr))
 
 
