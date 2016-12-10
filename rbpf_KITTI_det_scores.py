@@ -45,9 +45,8 @@ from run_experiment_batch import get_description_of_run
 #from rbpf_ORIGINAL_sampling import Parameters
 #from rbpf_ORIGINAL_sampling import SCALED
 
-from rbpf_ORIGINAL_sampling_mult_meas import sample_and_reweight
-from rbpf_ORIGINAL_sampling_mult_meas import Parameters
-from rbpf_ORIGINAL_sampling_mult_meas import SCALED
+from rbpf_sampling import sample_and_reweight
+from rbpf_sampling import Parameters
 
 
 from gen_data import gen_data
@@ -59,15 +58,16 @@ DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
 PROFILE = False
-USE_GENERATED_DATA = True
+USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
 PLOT_TARGET_LOCATIONS = True
 if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
-
-USE_POISSON_DEATH_MODEL = True
+    
+USE_LEARNED_KF_PARAMS = True
+USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
@@ -87,7 +87,7 @@ DEBUG = False
 USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check USE_CONSTANT_R
 
 #default time between succesive measurement time instances (in seconds)
-default_time_step = .01 
+default_time_step = .1 
 TIME_SCALED = False
 
 USE_CONSTANT_R = True
@@ -98,22 +98,23 @@ NOT_CACHED_LIKELIHOODS = 0
 p_clutter_likelihood = 1.0/float(1242*375)
 p_birth_likelihood = 1.0/float(1242*375)
 ##Kalman filter defaults
-#P_default = np.array([[40.64558317, 0,           0, 0],
-#                      [0,          10,           0, 0],
-#                      [0,           0, 5.56278505, 0],
-#                      [0,           0,           0, 3]])
-#
-#R_default = np.array([[ 0.0,   0.0],
-#                      [ 0.0,   0.0]])
-#
-#
-##learned from all GT
-#Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
-#                      [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
-#                      [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
-#                      [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
-#
-#Q_default = 4*Q_default
+if USE_LEARNED_KF_PARAMS:
+    P_default = np.array([[40.64558317, 0,           0, 0],
+                          [0,          10,           0, 0],
+                          [0,           0, 5.56278505, 0],
+                          [0,           0,           0, 3]])
+    
+    R_default = np.array([[ 0.0,   0.0],
+                          [ 0.0,   0.0]])
+    
+    
+    #learned from all GT
+    Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
+                          [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
+                          [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
+                          [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
+    
+    Q_default = 4*Q_default
 
 
 #####################replicate ORIG
@@ -137,46 +138,46 @@ p_birth_likelihood = 1.0/float(1242*375)
 #          2.47439006e-04],
 #       [ -1.22464245e-10,   5.04898570e-06,   2.47439006e-04,
 #          9.90202440e+00]])
-
-if SCALED:
-    P_default = np.array([[(NOISE_SD*300)**2,      0,           0,  0],
-                          [0,          10*300**2,           0,  0],
-                          [0,           0,      (NOISE_SD*90)**2,  0],
-                          [0,           0,           0, 10*90**2]])
-
-    R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
-                          [          0.0,   (NOISE_SD*90)**2]])
-    Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0050,         0,         0],
-                          [         (300**2)*0.0050,       (300**2)*1.0,         0,         0],
-                          [              0,         0,(90**2)*0.00003333,    (90**2)*0.0050],
-                          [              0,         0,    (90**2)*0.0050,    (90**2)*1.0000]])
-    Q_default = Q_default*10**(-3)
-    if TIME_SCALED:
-        Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0005,         0,         0],
-                              [         (300**2)*0.0005,       (300**2)*.01,         0,         0],
-                              [              0,         0,(90**2)*0.00003333,    (90**2)*0.0005],
-                              [              0,         0,    (90**2)*0.0005,    (90**2)*.01]])    
-
-
 else:
-    P_default = np.array([[(NOISE_SD)**2,    0,           0,  0],
-                          [0,          10,           0,  0],
-                          [0,           0,   (NOISE_SD)**2,  0],
-                          [0,           0,           0, 10]])
+    if SCALED:
+        P_default = np.array([[(NOISE_SD*300)**2,      0,           0,  0],
+                              [0,          10*300**2,           0,  0],
+                              [0,           0,      (NOISE_SD*90)**2,  0],
+                              [0,           0,           0, 10*90**2]])
 
-    R_default = np.array([[ (NOISE_SD)**2,             0.0],
-                          [      0.0,   (NOISE_SD)**2]])
-    Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
-                          [         0.0050,       1.0,         0,         0],
-                          [              0,         0,0.00003333,    0.0050],
-                          [              0,         0,    0.0050,    1.0000]])
-    Q_default = Q_default*10**(-3)
+        R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
+                              [          0.0,   (NOISE_SD*90)**2]])
+        Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0050,         0,         0],
+                              [         (300**2)*0.0050,       (300**2)*1.0,         0,         0],
+                              [              0,         0,(90**2)*0.00003333,    (90**2)*0.0050],
+                              [              0,         0,    (90**2)*0.0050,    (90**2)*1.0000]])
+        Q_default = Q_default*10**(-3)
+        if TIME_SCALED:
+            Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0005,         0,         0],
+                                  [         (300**2)*0.0005,       (300**2)*.01,         0,         0],
+                                  [              0,         0,(90**2)*0.00003333,    (90**2)*0.0005],
+                                  [              0,         0,    (90**2)*0.0005,    (90**2)*.01]])    
 
-    if TIME_SCALED:
-        Q_default = np.array([[     0.00003333,    0.0005,         0,         0],
-                              [         0.0005,       .01,         0,         0],
-                              [              0,         0,0.00003333,    0.0005],
-                              [              0,         0,    0.0005,    .01]])  
+
+    else:
+        P_default = np.array([[(NOISE_SD)**2,    0,           0,  0],
+                              [0,          10,           0,  0],
+                              [0,           0,   (NOISE_SD)**2,  0],
+                              [0,           0,           0, 10]])
+
+        R_default = np.array([[ (NOISE_SD)**2,             0.0],
+                              [      0.0,   (NOISE_SD)**2]])
+        Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
+                              [         0.0050,       1.0,         0,         0],
+                              [              0,         0,0.00003333,    0.0050],
+                              [              0,         0,    0.0050,    1.0000]])
+        Q_default = Q_default*10**(-3)
+
+        if TIME_SCALED:
+            Q_default = np.array([[     0.00003333,    0.0005,         0,         0],
+                                  [         0.0005,       .01,         0,         0],
+                                  [              0,         0,0.00003333,    0.0005],
+                                  [              0,         0,    0.0005,    .01]])  
 
 #learned from all GT
 #Q_default = np.array([[     0.0000,         0,    0.0050,         0],
@@ -438,9 +439,9 @@ class Target:
             #integral(gamma_dist(k = a, theta = b))from x to infinity
             last_assoc = self.last_measurement_association
 #            if USE_GENERATED_DATA:
-#                cur_time = cur_time/10.0
-#                prev_time = prev_time/10.0
-#                last_assoc = self.last_measurement_association/10.0
+            cur_time = cur_time/10.0
+            prev_time = prev_time/10.0
+            last_assoc = self.last_measurement_association/10.0
 
 #            #I think this is correct
 #            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
