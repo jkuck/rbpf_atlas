@@ -45,9 +45,8 @@ from run_experiment_batch import get_description_of_run
 #from rbpf_ORIGINAL_sampling import Parameters
 #from rbpf_ORIGINAL_sampling import SCALED
 
-from rbpf_ORIGINAL_sampling_mult_meas import sample_and_reweight
-from rbpf_ORIGINAL_sampling_mult_meas import Parameters
-from rbpf_ORIGINAL_sampling_mult_meas import SCALED
+from rbpf_sampling import sample_and_reweight
+from rbpf_sampling import Parameters
 
 
 from gen_data import gen_data

@@ -13,7 +13,7 @@ DIRECTORY_OF_ALL_RESULTS = './results'
 
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_probDet95_clutLambdaPoint1_noise05_noShuffle_beta1'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
-CUR_EXPERIMENT_BATCH_NAME = 'origRBPF_KITTI_DATA_learnedKFparams_learnedDeath'
+CUR_EXPERIMENT_BATCH_NAME = 'good_results_test'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
                            use_regionlets_and_lsvm, sort_dets_on_intervals,
