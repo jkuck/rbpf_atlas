@@ -22,7 +22,7 @@ echo "------------------------------------------------------------"
 echo "pwd:"
 pwd
 
-python rbpf_KITTI_det_scores.py $num_particles $include_ignored_gt $include_dontcare_in_gt $use_regionlets_and_lsvm $sort_dets_on_intervals $RUN_IDX $NUM_RUNS $SEQ_IDX
+python rbpf_KITTI_det_scores.py $num_particles $include_ignored_gt $include_dontcare_in_gt $use_regionlets $use_mscnn $sort_dets_on_intervals $RUN_IDX $NUM_RUNS $SEQ_IDX
 
 source deactivate
 
