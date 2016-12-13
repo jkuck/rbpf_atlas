@@ -1,8 +1,6 @@
-import matplotlib
 import numpy as np
-import matplotlib.pyplot as plt
 import json
-
+import sys
 tracks = json.load(open("../data/groundtruth_tracks.json"))
 import pandas
 import math
@@ -62,8 +60,33 @@ def mle_var(tracks, predTracks, skip=None):
             y = ((point[1] - predictedTracks[key][j][1])**2)
             variances[key].append((x,y))
     return variances
+
+def rebuildTracks(tracks, model, skip=None):
+    predTracks = {}
+    for track in tracks.items():
+        if skip:
+            filename = "%04dtxt" % skip
+            if filename in track[0]:
+                continue
+        predTracks[track[0]] = []
+        t = predTracks[track[0]]
+        for i, pos in enumerate(track[1]):
+            if i < 3:
+                t.append(pos)
+            else:
+                # scale and resize
+                p1 = track[1][i-3]
+                p2 = track[1][i-2]
+                p3 = track[1][i-1]
+                p = scaler.transform(np.array(p1+p2+p3+p3).reshape(1,-1))[0][0:6].reshape(1,3,2)
+                # predict
+                pred = model.predict(p).reshape(1,2).tolist()
+                pred = scaler.inverse_transform(np.array(pred[0]+pred[0]+pred[0]+pred[0])\
+                                                .reshape(1,-1))[0][0:2]
+                t.append(pred)
+    return predTracks
       
-i = argv[1]
+i = int(sys.argv[1])
    
 print "Cross validation for model %d" % i
 dataset = buildLookbackDataset(tracks,skip=i) 
@@ -104,7 +127,8 @@ print('Train Score: %.7f RMSE' % (trainScore))
 testScore = math.sqrt(mean_squared_error(scaledyTest[:,6:], scaledPredictTest[:,6:]))
 print('Test Score: %.7f RMSE' % (testScore))
 
-    vs = mle_var(tracks, predictedTracks)
+predictedTracks = rebuildTracks(tracks,model)
+vs = mle_var(tracks, predictedTracks)
 dataset = buildVarDataset(tracks, predictedTracks, vs, skip=i) 
 dataset = np.array(dataset)
 
