@@ -12,6 +12,9 @@ from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 
+import theano
+theano.config.openmp = True
+
 def buildLookbackDataset(tracks, lookback=3, skip=None):
     lookback +=1
     dataset = []
@@ -44,11 +47,15 @@ def buildVarDataset(tracks, predTracks, variance, lookback=3, skip=None):
             dataset.append(row)
     return dataset
 
-def mle_var(tracks, predTracks):
+def mle_var(tracks, predTracks, skip=None):
     variances = {}
     x = []
     y = []
     for (key, track) in tracks.items():
+        if skip:
+            filename= "%04d.txt" % skip
+            if filename in key:
+                continue
         variances[key] = []
         for j, point in enumerate(track):
             x = ((point[0] - predictedTracks[key][j][0])**2)
@@ -56,8 +63,6 @@ def mle_var(tracks, predTracks):
             variances[key].append((x,y))
     return variances
       
-vs = mle_var(tracks, predictedTracks)
-
 
 for i in xrange(21):          
 	print "Cross validation for model %d" % i
@@ -84,7 +89,7 @@ for i in xrange(21):
 	model.add(Dense(2))
 	model.compile(loss='mean_squared_error', optimizer='adam')
 	model.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
-	model.save_weights('cv-mu-weights%d.h5' % i)
+	model.save_weights('/lfs/local/0/daniter/autocars/cv-mu-weights%d.h5' % i)
 
 	trainPredict = model.predict(xtrain)
 	testPredict = model.predict(xtest)
@@ -99,7 +104,7 @@ for i in xrange(21):
 	testScore = math.sqrt(mean_squared_error(scaledyTest[:,6:], scaledPredictTest[:,6:]))
 	print('Test Score: %.7f RMSE' % (testScore))
 
-
+        vs = mle_var(tracks, predictedTracks)
 	dataset = buildVarDataset(tracks, predictedTracks, vs, skip=i) 
 	dataset = np.array(dataset)
 
@@ -129,7 +134,7 @@ for i in xrange(21):
 	varmodel.add(Dense(2))
 	varmodel.compile(loss='mean_squared_error', optimizer='adam')
 	varmodel.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
-	varmodel.save_weights('cv-cov-weights%d.h5' % i)
+	varmodel.save_weights('/lfs/local/0/daniter/autocars/cv-cov-weights%d.h5' % i)
 
 	trainPredict = varmodel.predict(xtrain)
 	testPredict = varmodel.predict(xtest)
