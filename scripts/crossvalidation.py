@@ -63,91 +63,91 @@ def mle_var(tracks, predTracks, skip=None):
             variances[key].append((x,y))
     return variances
       
+i = argv[1]
+   
+print "Cross validation for model %d" % i
+dataset = buildLookbackDataset(tracks,skip=i) 
+dataset = np.array(dataset)
 
-for i in xrange(21):          
-	print "Cross validation for model %d" % i
-	dataset = buildLookbackDataset(tracks,skip=i) 
-	dataset = np.array(dataset)
+scaler = MinMaxScaler(feature_range=(0, 1))
+dataset = scaler.fit_transform(dataset)
+train_size = int(len(dataset) * 0.67)
+test_size = len(dataset) - train_size
+train, test = dataset[0:train_size,:], dataset[train_size:len(dataset),:]
 
-	scaler = MinMaxScaler(feature_range=(0, 1))
-	dataset = scaler.fit_transform(dataset)
-	train_size = int(len(dataset) * 0.67)
-	test_size = len(dataset) - train_size
-	train, test = dataset[0:train_size,:], dataset[train_size:len(dataset),:]
+xtrain = np.matrix(train[:,0:6])
+ytrain = np.matrix(train[:,6:])
+xtest = np.matrix(test[:,0:6])
+ytest = np.matrix(test[:,6:])
 
-	xtrain = np.matrix(train[:,0:6])
-	ytrain = np.matrix(train[:,6:])
-	xtest = np.matrix(test[:,0:6])
-	ytest = np.matrix(test[:,6:])
+# reshape input to be [samples, time steps, features]
+xtrain = np.reshape(np.array(xtrain), (xtrain.shape[0], 3, 2))
+xtest = np.reshape(np.array(xtest), (xtest.shape[0], 3, 2))
 
-	# reshape input to be [samples, time steps, features]
-	xtrain = np.reshape(np.array(xtrain), (xtrain.shape[0], 3, 2))
-	xtest = np.reshape(np.array(xtest), (xtest.shape[0], 3, 2))
+model = Sequential()
+model.add(LSTM(32, input_shape=(3,2)))
+model.add(Dense(2))
+model.compile(loss='mean_squared_error', optimizer='adam')
+model.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
+model.save_weights('/lfs/local/0/daniter/autocars/cv-mu-weights%d.h5' % i)
 
-	model = Sequential()
-	model.add(LSTM(32, input_shape=(3,2)))
-	model.add(Dense(2))
-	model.compile(loss='mean_squared_error', optimizer='adam')
-	model.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
-	model.save_weights('/lfs/local/0/daniter/autocars/cv-mu-weights%d.h5' % i)
+trainPredict = model.predict(xtrain)
+testPredict = model.predict(xtest)
 
-	trainPredict = model.predict(xtrain)
-	testPredict = model.predict(xtest)
+scaledPredictTrain = scaler.inverse_transform(np.concatenate((ytrain,trainPredict,ytrain,trainPredict), axis=1))
+scaledPredictTest = scaler.inverse_transform(np.concatenate((ytest,testPredict,ytest,testPredict), axis=1))
+scaledyTrain = scaler.inverse_transform(np.concatenate((ytrain,trainPredict,ytrain,ytrain), axis=1))
+scaledyTest = scaler.inverse_transform(np.concatenate((ytest,testPredict,ytest,ytest), axis=1))
 
-	scaledPredictTrain = scaler.inverse_transform(np.concatenate((ytrain,trainPredict,ytrain,trainPredict), axis=1))
-	scaledPredictTest = scaler.inverse_transform(np.concatenate((ytest,testPredict,ytest,testPredict), axis=1))
-	scaledyTrain = scaler.inverse_transform(np.concatenate((ytrain,trainPredict,ytrain,ytrain), axis=1))
-	scaledyTest = scaler.inverse_transform(np.concatenate((ytest,testPredict,ytest,ytest), axis=1))
+trainScore = math.sqrt(mean_squared_error(scaledyTrain[:,6:], scaledPredictTrain[:,6:]))
+print('Train Score: %.7f RMSE' % (trainScore))
+testScore = math.sqrt(mean_squared_error(scaledyTest[:,6:], scaledPredictTest[:,6:]))
+print('Test Score: %.7f RMSE' % (testScore))
 
-	trainScore = math.sqrt(mean_squared_error(scaledyTrain[:,6:], scaledPredictTrain[:,6:]))
-	print('Train Score: %.7f RMSE' % (trainScore))
-	testScore = math.sqrt(mean_squared_error(scaledyTest[:,6:], scaledPredictTest[:,6:]))
-	print('Test Score: %.7f RMSE' % (testScore))
+    vs = mle_var(tracks, predictedTracks)
+dataset = buildVarDataset(tracks, predictedTracks, vs, skip=i) 
+dataset = np.array(dataset)
 
-        vs = mle_var(tracks, predictedTracks)
-	dataset = buildVarDataset(tracks, predictedTracks, vs, skip=i) 
-	dataset = np.array(dataset)
+dataset[:,8] = dataset[:,8].clip(0,100)
+dataset[:,9] = dataset[:,9].clip(0,5)
 
-	dataset[:,8] = dataset[:,8].clip(0,100)
-	dataset[:,9] = dataset[:,9].clip(0,5)
+scaler = MinMaxScaler(feature_range=(0, 1))
+dataset = scaler.fit_transform(dataset)
 
-	scaler = MinMaxScaler(feature_range=(0, 1))
-	dataset = scaler.fit_transform(dataset)
+# Split into test and train
+train_size = int(len(dataset) * 0.67)
+test_size = len(dataset) - train_size
+train, test = dataset[0:train_size,:], dataset[train_size:len(dataset),:]
+print(len(train), len(test))
 
-	# Split into test and train
-	train_size = int(len(dataset) * 0.67)
-	test_size = len(dataset) - train_size
-	train, test = dataset[0:train_size,:], dataset[train_size:len(dataset),:]
-	print(len(train), len(test))
+xtrain = np.matrix(train[:,0:8])
+ytrain = np.matrix(train[:,8:])
+xtest = np.matrix(test[:,0:8])
+ytest = np.matrix(test[:,8:])
 
-	xtrain = np.matrix(train[:,0:8])
-	ytrain = np.matrix(train[:,8:])
-	xtest = np.matrix(test[:,0:8])
-	ytest = np.matrix(test[:,8:])
+# reshape input to be [samples, time steps, features]
+xtrain = np.reshape(np.array(xtrain), (xtrain.shape[0], 4, 2))
+xtest = np.reshape(np.array(xtest), (xtest.shape[0], 4, 2))
 
-	# reshape input to be [samples, time steps, features]
-	xtrain = np.reshape(np.array(xtrain), (xtrain.shape[0], 4, 2))
-	xtest = np.reshape(np.array(xtest), (xtest.shape[0], 4, 2))
+varmodel = Sequential()
+varmodel.add(LSTM(32, input_shape=(4,2)))
+varmodel.add(Dense(2))
+varmodel.compile(loss='mean_squared_error', optimizer='adam')
+varmodel.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
+varmodel.save_weights('/lfs/local/0/daniter/autocars/cv-cov-weights%d.h5' % i)
 
-	varmodel = Sequential()
-	varmodel.add(LSTM(32, input_shape=(4,2)))
-	varmodel.add(Dense(2))
-	varmodel.compile(loss='mean_squared_error', optimizer='adam')
-	varmodel.fit(xtrain, ytrain, nb_epoch=10, batch_size=1, verbose=2)
-	varmodel.save_weights('/lfs/local/0/daniter/autocars/cv-cov-weights%d.h5' % i)
+trainPredict = varmodel.predict(xtrain)
+testPredict = varmodel.predict(xtest)
 
-	trainPredict = varmodel.predict(xtrain)
-	testPredict = varmodel.predict(xtest)
+scaledYTrain = scaler.inverse_transform(np.concatenate((xtrain.reshape((xtrain.shape[0],8)),ytrain), axis=1))
+scaledYTest = scaler.inverse_transform(np.concatenate((xtest.reshape((xtest.shape[0],8)),ytest), axis=1))
+scaledPredictTrain = scaler.inverse_transform(np.concatenate((xtrain.reshape((xtrain.shape[0],8)),trainPredict), axis=1))
+scaledPredictTest = scaler.inverse_transform(np.concatenate((xtest.reshape((xtest.shape[0],8)),testPredict), axis=1))
 
-	scaledYTrain = scaler.inverse_transform(np.concatenate((xtrain.reshape((xtrain.shape[0],8)),ytrain), axis=1))
-	scaledYTest = scaler.inverse_transform(np.concatenate((xtest.reshape((xtest.shape[0],8)),ytest), axis=1))
-	scaledPredictTrain = scaler.inverse_transform(np.concatenate((xtrain.reshape((xtrain.shape[0],8)),trainPredict), axis=1))
-	scaledPredictTest = scaler.inverse_transform(np.concatenate((xtest.reshape((xtest.shape[0],8)),testPredict), axis=1))
-
-	trainScore = math.sqrt(mean_squared_error(scaledPredictTrain[:,8:], scaledYTrain[:,8:]))
-	print('Train Score: %.7f RMSE' % (trainScore))
-	testScore = math.sqrt(mean_squared_error(scaledPredictTest[:,8:], scaledYTest[:,8:]))
-	print('Test Score: %.7f RMSE' % (testScore))
+trainScore = math.sqrt(mean_squared_error(scaledPredictTrain[:,8:], scaledYTrain[:,8:]))
+print('Train Score: %.7f RMSE' % (trainScore))
+testScore = math.sqrt(mean_squared_error(scaledPredictTest[:,8:], scaledYTest[:,8:]))
+print('Test Score: %.7f RMSE' % (testScore))
 
 
 
