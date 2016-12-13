@@ -53,6 +53,15 @@ from gen_data import gen_data
 from gen_data import NUM_GEN_FRAMES
 from gen_data import NOISE_SD
 
+#MOTION options
+KF_MOTION = False
+LSTM_MOTION = True
+KNN_MOTION = False
+#one of the above should be true, others false
+assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(True)==1)
+assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(False)==2)
+LSTM_WINDOW = 3 #number of frames used to make LSTM prediction
+KNN_WINDOW = 5 #number of frames used to make KNN prediction
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
@@ -299,28 +308,72 @@ class Target:
         return near_border
 
 
-    def kf_update(self, measurement, width, height, cur_time, meas_noise_cov):
+    def kf_update(self, measurement, meas_noise_cov):
         """ Perform Kalman filter update step and replace predicted position for the current time step
         with the updated position in self.all_states
         Input:
-        - measurement: the measurement (numpy array)
-        - cur_time: time when the measurement was taken (float)
+            - measurement: the measurement (numpy array)
+            - cur_time: time when the measurement was taken (float)
+        Output:
+            -updated_x: updated state, numpy array with dimensions (4,1)
+            -updated_P: updated covariance, numpy array with dimensions (4,4)
+
 !!!!!!!!!PREDICTION HAS BEEN RUN AT THE BEGINNING OF TIME STEP FOR EVERY TARGET!!!!!!!!!
         """
-        reformat_meas = np.array([[measurement[0]],
-                                  [measurement[1]]])
-        assert(self.x.shape == (4, 1))
         if USE_CONSTANT_R:
             S = np.dot(np.dot(H, self.P), H.T) + R_default
         else:
             S = np.dot(np.dot(H, self.P), H.T) + meas_noise_cov
         K = np.dot(np.dot(self.P, H.T), inv(S))
-        residual = reformat_meas - np.dot(H, self.x)
+        residual = measurement - np.dot(H, self.x)
         updated_x = self.x + np.dot(K, residual)
     #   updated_self.P = np.dot((np.eye(self.P.shape[0]) - np.dot(K, H)), self.P) #NUMERICALLY UNSTABLE!!!!!!!!
         updated_P = self.P - np.dot(np.dot(K, S), K.T) #not sure if this is numerically stable!!
-        self.x = updated_x
-        self.P = updated_P
+        return (updated_x, updated_P)
+
+    def update(self, measurement, width, height, cur_time, meas_noise_cov):
+        """ Perform update step and replace predicted position for the current time step
+        with the updated position in self.all_states
+        Input:
+        - measurement: the measurement (numpy array)
+        - cur_time: time when the measurement was taken (float)
+!!!!!!!!!PREDICTION HAS BEEN RUN AT THE BEGINNING OF TIME STEP FOR EVERY TARGET!!!!!!!!!
+        """        
+        reformat_meas = np.array([[measurement[0]],
+                                  [measurement[1]]])
+        assert(self.x.shape == (4, 1))
+
+        if KF_MOTION:
+            (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+        elif LSTM_MOTION:
+            if(len(self.all_states) <= LSTM_WINDOW):
+                (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+            else:
+                self.x = np.array([[measurement[0]],
+                                              [-99],
+                                   [measurement[1]],
+                                              [-99]])
+                self.P = np.array([[-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99]])
+        else:
+            assert(KNN_MOTION)
+            if(len(self.all_states) <= KNN_WINDOW):
+                (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+            else:
+                self.x = np.array([[measurement[0]],
+                                              [-99],
+                                   [measurement[1]],
+                                              [-99]])
+                self.P = np.array([[-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99]])
+
+        assert(self.x.shape == (4, 1))
+        assert(self.P.shape == (4, 4))
+
         self.width = width
         self.height = height
         assert(self.all_time_stamps[-1] == round(cur_time, 2) and self.all_time_stamps[-2] != round(cur_time, 2))
@@ -328,24 +381,132 @@ class Target:
 
         self.all_states[-1] = (self.x, self.width, self.height)
         self.updated_this_time_instance = True
-        self.last_measurement_association = cur_time
+        self.last_measurement_association = cur_time        
 
-    def kf_predict(self, dt, cur_time):
+
+
+    def kf_predict(self, dt):
         """
         Run kalman filter prediction on this target
         Inputs:
             -dt: time step to run prediction on
-            -cur_time: the time the prediction is made for
+        Output:
+            -x_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)
+
         """
-        assert(self.all_time_stamps[-1] == round((cur_time - dt), 2))
         F = np.array([[1.0,  dt, 0.0, 0.0],
                       [0.0, 1.0, 0.0, 0.0],
                       [0.0, 0.0, 1.0,  dt],
                       [0.0, 0.0, 0.0, 1.0]])
         x_predict = np.dot(F, self.x)
         P_predict = np.dot(np.dot(F, self.P), F.T) + Q_default
-        self.x = x_predict
-        self.P = P_predict
+        return (x_predict, P_predict)
+
+
+    def lstm_predict(self):
+        """
+        Output:
+            -state_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)
+
+        """
+        # array of locations:
+        #[[x_t,     y_t],
+        # [x_t-1, y_t-1],
+        # ...
+        # [x_t-windowsize+1, y_t-windowsize+1]]
+        past_locations = np.zeros((LSTM_WINDOW,2))
+        for i in range(LSTM_WINDOW):
+            past_locations[i, 0] = all_states[-1-i][1,0]
+            past_locations[i, 1] = all_states[-1-i][3,0]
+
+        ##########DAN Begin
+
+
+        #Fill me in here
+        x_predict = -99
+        y_predict = -99
+        x_var = -99
+        y_var = -99
+        xy_cov = -99
+        ##########DAN End
+
+        state_predict = np.array([[x_predict],
+                              [-99],
+                              [y_predict],
+                              [-99]])
+        P_predict = np.array([[x_var, -99, xy_cov, -99],
+                              [-99, -99, -99, -99],
+                              [xy_cov, -99, y_var, -99],
+                              [-99, -99, -99, -99]])
+        return (state_predict, P_predict)
+
+
+    def knn_predict(self):
+        """
+        Output:
+            -state_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)        
+        """
+        # array of locations:
+        #[[x_t,     y_t],
+        # [x_t-1, y_t-1],
+        # ...
+        # [x_t-windowsize+1, y_t-windowsize+1]]
+        past_locations = np.zeros((LSTM_WINDOW,2))
+        for i in range(LSTM_WINDOW):
+            past_locations[i, 0] = all_states[-1-i][1,0]
+            past_locations[i, 1] = all_states[-1-i][3,0]
+
+        ##########Philip Begin
+
+
+        #Fill me in here
+        x_predict = -99
+        y_predict = -99
+        x_var = -99
+        y_var = -99
+        xy_cov = -99
+        ##########Philip End
+
+        state_predict = np.array([[x_predict],
+                              [-99],
+                              [y_predict],
+                              [-99]])
+        P_predict = np.array([[x_var, -99, xy_cov, -99],
+                              [-99, -99, -99, -99],
+                              [xy_cov, -99, y_var, -99],
+                              [-99, -99, -99, -99]])
+        return (state_predict, P_predict)
+
+
+    def predict(self, dt, cur_time):
+        """
+        Run prediction on this target
+        Inputs:
+            -dt: time step to run prediction on
+            -cur_time: the time the prediction is made for
+        """
+        assert(self.all_time_stamps[-1] == round((cur_time - dt), 2))
+
+        if KF_MOTION:
+            (self.x, self.P) = self.kf_predict(dt)
+        elif LSTM_MOTION:
+            if(len(self.all_states) < LSTM_WINDOW):
+                (self.x, self.P) = self.kf_predict(dt)
+            else:
+                (self.x, self.P) = self.lstm_predict(dt)
+        else:
+            assert(KNN_MOTION)
+            if(len(self.all_states) < KNN_WINDOW):
+                (self.x, self.P) = self.kf_predict(dt)
+            else:
+                (self.x, self.P) = self.knn_predict(dt)
+
+        assert(self.x.shape == (4, 1))
+        assert(self.P.shape == (4, 4))
+
         self.all_states.append((self.x, self.width, self.height))
         self.all_time_stamps.append(round(cur_time, 2))
 
@@ -356,39 +517,7 @@ class Target:
             if USE_GENERATED_DATA:
                 self.offscreen = False
 
-        assert(self.x.shape == (4, 1))
         self.updated_this_time_instance = False
-
-	def lstm_predict(self, model, dt, cur_time):
-		"""
-		Run lstm prediction on this target
-		Inputs:
-			-model: the pretrained lstm model
-			-dt: time step to run prediction on
-			-cur_time: the time the prediction is made for
-		"""
-		assert(self.all_time_stamps[-1] == round((cur_time - dt), 1))
-		if len(self.all_states) < 3:
-			F = np.array([[1.0,  dt, 0.0, 0.0],
-			      		  [0.0, 1.0, 0.0, 0.0],
-	                      [0.0, 0.0, 1.0,  dt],
-	                      [0.0, 0.0, 0.0, 1.0]])
-			x_predict = np.dot(F, self.x)
-			P_predict = np.dot(np.dot(F, self.P), F.T) + Q_default
-			self.x = x_predict
-			self.P = P_predict
-			self.all_states.append((self.x, self.width, self.height))
-			self.all_time_stamps.append(round(cur_time, 1))
-
-			if(self.x[0][0]<0 or self.x[0][0]>=CAMERA_PIXEL_WIDTH or \
-			   self.x[2][0]<0 or self.x[2][0]>=CAMERA_PIXEL_HEIGHT):
-	#			print '!'*40, "TARGET IS OFFSCREEN", '!'*40
-				self.offscreen = True
-
-			assert(self.x.shape == (4, 1))
-			self.updated_this_time_instance = False
-		else:
-			pass
 
 
 ################### def target_death_prob(self, cur_time, prev_time):
