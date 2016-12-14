@@ -1,3 +1,4 @@
+python crossvalidation.py 0 > cv0.txt 2>&1 &
 python crossvalidation.py 1 > cv1.txt 2>&1 &
 python crossvalidation.py 2 > cv2.txt 2>&1 &
 python crossvalidation.py 3 > cv3.txt 2>&1 &
@@ -18,4 +19,3 @@ python crossvalidation.py 17 > cv17.txt 2>&1 &
 python crossvalidation.py 18 > cv18.txt 2>&1 &
 python crossvalidation.py 19 > cv19.txt 2>&1 &
 python crossvalidation.py 20 > cv20.txt 2>&1 &
-python crossvalidation.py 21 > cv21.txt 2>&1 &
