@@ -8,6 +8,11 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+
 #import matplotlib.cm as cmx
 #import matplotlib.colors as colors
 from scipy.stats import multivariate_normal
@@ -416,19 +421,30 @@ class Target:
         # [x_t-1, y_t-1],
         # ...
         # [x_t-windowsize+1, y_t-windowsize+1]]
-        past_locations = np.zeros((LSTM_WINDOW,2))
+        past_locations = np.zeros(LSTM_WINDOW*2)
         for i in range(LSTM_WINDOW):
-            past_locations[i, 0] = self.all_states[-1-i][0][0,0]
-            past_locations[i, 1] = self.all_states[-1-i][0][2,0]
+            pos = -1 - LSTM_WINDOW +1 
+            past_locations[2*i] = self.all_states[pos+i][0][0,0]
+            past_locations[2*i+1] = self.all_states[pos+i][0][2,0]
 
         ##########DAN Begin
+        cat = np.concatenate((past_locations, past_locations[:2]))
+        past_locations_scaled = scaler.transform(np.matrix(cat).reshape(1,8))
+        past_locations_scaled = past_locations_scaled.reshape((8,))[:6]
+        prediction = model.predict(past_locations_scaled.reshape(1,3,2))
+        unscaled_set = scaler.inverse_transform(np.concatenate((past_locations_scaled, prediction.ravel())).reshape(1,8))
+        unscaled_prediction = unscaled_set.ravel()[6:]
 
-
+        var_prediction = varmodel.predict(np.concatenate((past_locations_scaled,prediction.ravel())).reshape(1,4,2))
+        oldvals = np.concatenate((past_locations_scaled,prediction.ravel()))
+        newval = np.concatenate((oldvals, var_prediction.ravel()))
+        variance_set = varscaler.inverse_transform(newval.reshape(1,10))
+        variance_prediction_unscaled = variance_set.ravel()[8:]
         #Fill me in here
-        x_predict = -99
-        y_predict = -99
-        x_var = 1
-        y_var = 1
+        x_predict = unscaled_prediction[0]
+        y_predict = unscaled_prediction[1]
+        x_var = variance_prediction_unscaled[0]
+        y_var = variance_prediction_unscaled[1]
         xy_cov = 0
         ##########DAN End
 
@@ -1522,6 +1538,27 @@ if __name__ == "__main__":
     run_idx = int(sys.argv[7]) #the index of this run
     total_runs = int(sys.argv[8]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
     seq_idx = int(sys.argv[9]) #the index of the sequence to process
+
+    #########################
+    # LSTM initialization
+    model = Sequential()
+    model.add(LSTM(32, input_shape=(3,2)))
+    model.add(Dense(2))
+    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.load_weights('/lfs/local/0/daniter/autocars/cv-mu-weights%d.h5' % seq_idx)
+
+    varmodel = Sequential()
+    varmodel.add(LSTM(32, input_shape=(4,2)))
+    varmodel.add(Dense(2))
+    varmodel.compile(loss='mean_squared_error', optimizer='adam')
+    varmodel.load_weights('/lfs/local/0/daniter/autocars/cv-cov-weights%d.h5' % seq_idx)
+    scaler = None
+    varscaler = None
+    with open('varscaler.pickle', 'r') as handle:
+      varscaler = pickle.load(handle)
+    with open('scaler.pickle', 'w') as handle:
+      scaler = pickle.load(handle)
+    #########################
 
     for i in range(2,6):
         if(sys.argv[i] != 'True' and sys.argv[i] != 'False'):
