@@ -1545,18 +1545,18 @@ if __name__ == "__main__":
     model.add(LSTM(32, input_shape=(3,2)))
     model.add(Dense(2))
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.load_weights('/lfs/local/0/daniter/autocars/cv-mu-weights%d.h5' % seq_idx)
+    model.load_weights('/atlas/u/daniter/models/cv-mu-weights%d.h5' % seq_idx)
 
     varmodel = Sequential()
     varmodel.add(LSTM(32, input_shape=(4,2)))
     varmodel.add(Dense(2))
     varmodel.compile(loss='mean_squared_error', optimizer='adam')
-    varmodel.load_weights('/lfs/local/0/daniter/autocars/cv-cov-weights%d.h5' % seq_idx)
+    varmodel.load_weights('/atlas/u/daniter/models/cv-cov-weights%d.h5' % seq_idx)
     scaler = None
     varscaler = None
-    with open('varscaler.pickle', 'r') as handle:
+    with open('/atlas/u/daniter/models/varscaler.pickle', 'r') as handle:
       varscaler = pickle.load(handle)
-    with open('scaler.pickle', 'w') as handle:
+    with open('/atlas/u/daniter/models/scaler.pickle', 'w') as handle:
       scaler = pickle.load(handle)
     #########################
 
