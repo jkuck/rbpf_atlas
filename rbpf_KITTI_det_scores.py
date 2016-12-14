@@ -1556,7 +1556,7 @@ if __name__ == "__main__":
     varscaler = None
     with open('/atlas/u/daniter/models/varscaler.pickle', 'r') as handle:
       varscaler = pickle.load(handle)
-    with open('/atlas/u/daniter/models/scaler.pickle', 'w') as handle:
+    with open('/atlas/u/daniter/models/scaler.pickle', 'r') as handle:
       scaler = pickle.load(handle)
     #########################
 
