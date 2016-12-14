@@ -129,11 +129,11 @@ def submit_single_experiment(use_regionlets, use_mscnn, num_particles, include_i
 
 
 if __name__ == "__main__":
-#    #mscnn_only_with_score_intervals
-#    for num_particles in NUM_PARTICLES_TO_TEST:
-#        submit_single_experiment(use_regionlets=False, use_mscnn=True, num_particles=num_particles, 
-#                                include_ignored_gt=False, include_dontcare_in_gt=False, 
-#                                sort_dets_on_intervals=True)
+    #mscnn_only_with_score_intervals
+    for num_particles in NUM_PARTICLES_TO_TEST:
+        submit_single_experiment(use_regionlets=False, use_mscnn=True, num_particles=num_particles, 
+                                include_ignored_gt=False, include_dontcare_in_gt=False, 
+                                sort_dets_on_intervals=True)
     
     #mscnn_and_regionlets_with_score_intervals
     for num_particles in NUM_PARTICLES_TO_TEST:

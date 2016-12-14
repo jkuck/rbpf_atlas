@@ -418,8 +418,8 @@ class Target:
         # [x_t-windowsize+1, y_t-windowsize+1]]
         past_locations = np.zeros((LSTM_WINDOW,2))
         for i in range(LSTM_WINDOW):
-            past_locations[i, 0] = all_states[-1-i][1,0]
-            past_locations[i, 1] = all_states[-1-i][3,0]
+            past_locations[i, 0] = self.all_states[-1-i][0][0,0]
+            past_locations[i, 1] = self.all_states[-1-i][0][2,0]
 
         ##########DAN Begin
 
@@ -427,9 +427,9 @@ class Target:
         #Fill me in here
         x_predict = -99
         y_predict = -99
-        x_var = -99
-        y_var = -99
-        xy_cov = -99
+        x_var = 1
+        y_var = 1
+        xy_cov = 0
         ##########DAN End
 
         state_predict = np.array([[x_predict],
@@ -456,8 +456,8 @@ class Target:
         # [x_t-windowsize+1, y_t-windowsize+1]]
         past_locations = np.zeros((LSTM_WINDOW,2))
         for i in range(LSTM_WINDOW):
-            past_locations[i, 0] = all_states[-1-i][1,0]
-            past_locations[i, 1] = all_states[-1-i][3,0]
+            past_locations[i, 0] = self.all_states[-1-i][0][0,0]
+            past_locations[i, 1] = self.all_states[-1-i][0][2,0]
 
         ##########Philip Begin
 
@@ -496,13 +496,13 @@ class Target:
             if(len(self.all_states) < LSTM_WINDOW):
                 (self.x, self.P) = self.kf_predict(dt)
             else:
-                (self.x, self.P) = self.lstm_predict(dt)
+                (self.x, self.P) = self.lstm_predict()
         else:
             assert(KNN_MOTION)
             if(len(self.all_states) < KNN_WINDOW):
                 (self.x, self.P) = self.kf_predict(dt)
             else:
-                (self.x, self.P) = self.knn_predict(dt)
+                (self.x, self.P) = self.knn_predict()
 
         assert(self.x.shape == (4, 1))
         assert(self.P.shape == (4, 4))
@@ -951,7 +951,7 @@ class Particle:
                 assert(meas_index >= 0 and meas_index < len(measurement_scores)), (meas_index, len(measurement_scores), measurement_scores)
                 if not (MAX_1_MEAS_UPDATE and self.targets.living_targets[meas_assoc].updated_this_time_instance):
                     score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[meas_index])
-                    self.targets.living_targets[meas_assoc].kf_update(measurements[meas_index], widths[meas_index], \
+                    self.targets.living_targets[meas_assoc].update(measurements[meas_index], widths[meas_index], \
                                     heights[meas_index], cur_time, MEAS_NOISE_COVS[meas_source_index][score_index])
             else:
                 #otherwise the measurement was associated with clutter
@@ -1162,8 +1162,8 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
                 for target in particle.targets.living_targets:
                     dt = time_stamp - prev_time_stamp
                     assert(abs(dt - default_time_step) < .00000001), (dt, default_time_step, time_stamp, prev_time_stamp)
-                    target.kf_predict(dt, time_stamp)
-                #update particle death probabilities AFTER kf_predict so that targets that moved
+                    target.predict(dt, time_stamp)
+                #update particle death probabilities AFTER predict so that targets that moved
                 #off screen this time instance will be killed
                 particle.update_target_death_probabilities(time_stamp, prev_time_stamp)
 
