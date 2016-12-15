@@ -3,7 +3,7 @@ import os
 import errno
 import sys
 
-NUM_RUNS=1
+NUM_RUNS=3
 SEQUENCES_TO_PROCESS = [i for i in range(21)]
 #SEQUENCES_TO_PROCESS = [11]
 #SEQUENCES_TO_PROCESS = [13]
@@ -14,7 +14,7 @@ DIRECTORY_OF_ALL_RESULTS = './results'
 
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_probDet95_clutLambdaPoint1_noise05_noShuffle_beta1'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
-CUR_EXPERIMENT_BATCH_NAME = 'good_results_test_withMSCNN'
+CUR_EXPERIMENT_BATCH_NAME = 'good_results_test_withMSCNN_predictLSTM_largerMinVar'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets_on_intervals,
                            use_regionlets, use_mscnn):

@@ -67,6 +67,8 @@ assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(True)==1)
 assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(False)==2)
 LSTM_WINDOW = 3 #number of frames used to make LSTM prediction
 KNN_WINDOW = 5 #number of frames used to make KNN prediction
+MIN_LSTM_X_VAR = 40 #if the LSTM predicts x variance less than this value, set to this value
+MIN_LSTM_Y_VAR = 5 #if the LSTM predicts y variance less than this value, set to this value
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
@@ -444,7 +446,12 @@ class Target:
         x_predict = unscaled_prediction[0]
         y_predict = unscaled_prediction[1]
         x_var = variance_prediction_unscaled[0]
+        if(x_var < MIN_LSTM_X_VAR):
+            x_var = MIN_LSTM_X_VAR
         y_var = variance_prediction_unscaled[1]
+        if(y_var < MIN_LSTM_Y_VAR):
+            y_var = MIN_LSTM_Y_VAR
+
         xy_cov = 0
         ##########DAN End
 
