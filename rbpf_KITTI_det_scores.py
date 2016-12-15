@@ -67,8 +67,8 @@ assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(True)==1)
 assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(False)==2)
 LSTM_WINDOW = 3 #number of frames used to make LSTM prediction
 KNN_WINDOW = 5 #number of frames used to make KNN prediction
-MIN_LSTM_X_VAR = 40 #if the LSTM predicts x variance less than this value, set to this value
-MIN_LSTM_Y_VAR = 5 #if the LSTM predicts y variance less than this value, set to this value
+MIN_LSTM_X_VAR = 40.0/2.0 #if the LSTM predicts x variance less than this value, set to this value
+MIN_LSTM_Y_VAR = 5.0/2.0 #if the LSTM predicts y variance less than this value, set to this value
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
