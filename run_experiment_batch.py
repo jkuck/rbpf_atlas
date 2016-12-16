@@ -14,7 +14,7 @@ DIRECTORY_OF_ALL_RESULTS = './results'
 
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_probDet95_clutLambdaPoint1_noise05_noShuffle_beta1'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
-CUR_EXPERIMENT_BATCH_NAME = 'good_results_test_withMSCNN_predictLSTM_largerMinVarDiv2'
+CUR_EXPERIMENT_BATCH_NAME = 'fixedWeights_predictLSTM_variableR'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets_on_intervals,
                            use_regionlets, use_mscnn):
