@@ -69,8 +69,8 @@ LSTM_WINDOW = 3 #number of frames used to make LSTM prediction
 KNN_WINDOW = 5 #number of frames used to make KNN prediction
 #MIN_LSTM_X_VAR = 40.0/2.0 #if the LSTM predicts x variance less than this value, set to this value
 #MIN_LSTM_Y_VAR = 5.0/2.0 #if the LSTM predicts y variance less than this value, set to this value
-MIN_LSTM_X_VAR = .01 #if the LSTM predicts x variance less than this value, set to this value
-MIN_LSTM_Y_VAR = .01 #if the LSTM predicts y variance less than this value, set to this value
+#MIN_LSTM_X_VAR = .01 #if the LSTM predicts x variance less than this value, set to this value
+#MIN_LSTM_Y_VAR = .01 #if the LSTM predicts y variance less than this value, set to this value
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
@@ -448,11 +448,20 @@ class Target:
         x_predict = unscaled_prediction[0]
         y_predict = unscaled_prediction[1]
         x_var = variance_prediction_unscaled[0]
-        if(x_var < MIN_LSTM_X_VAR):
-            x_var = MIN_LSTM_X_VAR
+#        if(x_var < MIN_LSTM_X_VAR):
+#            x_var = MIN_LSTM_X_VAR
         y_var = variance_prediction_unscaled[1]
-        if(y_var < MIN_LSTM_Y_VAR):
-            y_var = MIN_LSTM_Y_VAR
+#        if(y_var < MIN_LSTM_Y_VAR):
+#            y_var = MIN_LSTM_Y_VAR
+        #Dan's edit
+        if x_var < 0:
+            x_var = 1.2
+        if x_var > 100:
+            x_var = 100
+        if y_var < 0:
+            y_var = 2.8
+        if y_var > 50:
+            y_var = 50
 
         xy_cov = 0
         ##########DAN End
