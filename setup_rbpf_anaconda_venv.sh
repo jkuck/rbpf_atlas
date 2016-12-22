@@ -6,14 +6,15 @@ PACKAGE_DIR=/atlas/u/jkuck/software
 export PATH=$PACKAGE_DIR/anaconda2/bin:$PATH
 export LD_LIBRARY_PATH=$PACKAGE_DIR/anaconda2/local:$LD_LIBRARY_PATH
 
-#already created, no need to run more than once
+#if running for the first time, uncomment next line or run manually
 #conda create -n anaconda_venv python=2.7.12 anaconda
 
-
 source activate anaconda_venv
+
+#if running for the first time, uncomment next 3 lines or run manually
 #conda install -n anaconda_venv numpy
-#conda install -n anaconda_venv filterpy
-#conda install -n anaconda_venv munkres
+#conda install -n anaconda_venv -c veeresht filterpy=0.1.2
+#conda install -n anaconda_venv -c omnia munkres=1.0.7
 
 echo "Using python from:"
 which python
