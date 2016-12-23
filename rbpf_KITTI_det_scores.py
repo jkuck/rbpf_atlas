@@ -8,6 +8,11 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+
 #import matplotlib.cm as cmx
 #import matplotlib.colors as colors
 from scipy.stats import multivariate_normal
@@ -41,27 +46,46 @@ from run_experiment_batch import CUR_EXPERIMENT_BATCH_NAME
 from run_experiment_batch import SEQUENCES_TO_PROCESS
 from run_experiment_batch import get_description_of_run
 
-from rbpf_ORIGINAL_sampling import sample_and_reweight
-from rbpf_ORIGINAL_sampling import Parameters
-from rbpf_ORIGINAL_sampling import SCALED
+#from rbpf_ORIGINAL_sampling import sample_and_reweight
+#from rbpf_ORIGINAL_sampling import Parameters
+#from rbpf_ORIGINAL_sampling import SCALED
+
+from rbpf_sampling import sample_and_reweight
+from rbpf_sampling import Parameters
+
+
 from gen_data import gen_data
 from gen_data import NUM_GEN_FRAMES
-from gen_data import NOISE_MAGNITUDE
+from gen_data import NOISE_SD
 
+#MOTION options
+KF_MOTION = True
+LSTM_MOTION = False
+KNN_MOTION = False
+#one of the above should be true, others false
+assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(True)==1)
+assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(False)==2)
+LSTM_WINDOW = 3 #number of frames used to make LSTM prediction
+KNN_WINDOW = 5 #number of frames used to make KNN prediction
+#MIN_LSTM_X_VAR = 40.0/2.0 #if the LSTM predicts x variance less than this value, set to this value
+#MIN_LSTM_Y_VAR = 5.0/2.0 #if the LSTM predicts y variance less than this value, set to this value
+#MIN_LSTM_X_VAR = .01 #if the LSTM predicts x variance less than this value, set to this value
+#MIN_LSTM_Y_VAR = .01 #if the LSTM predicts y variance less than this value, set to this value
 
 DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 
-
-USE_GENERATED_DATA = True
+PROFILE = False
+USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
 PLOT_TARGET_LOCATIONS = True
 if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
-
-USE_POISSON_DEATH_MODEL = True
+    
+USE_LEARNED_KF_PARAMS = True
+USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
@@ -74,7 +98,7 @@ FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False
 MAX_1_MEAS_UPDATE = True
 
 
-RESAMPLE_RATIO = 2.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
+RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
 DEBUG = False
 
@@ -82,8 +106,9 @@ USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check U
 
 #default time between succesive measurement time instances (in seconds)
 default_time_step = .1 
+TIME_SCALED = False
 
-USE_CONSTANT_R = True
+USE_CONSTANT_R = False
 #For testing why score interval for R are slow
 CACHED_LIKELIHOODS = 0
 NOT_CACHED_LIKELIHOODS = 0
@@ -91,22 +116,23 @@ NOT_CACHED_LIKELIHOODS = 0
 p_clutter_likelihood = 1.0/float(1242*375)
 p_birth_likelihood = 1.0/float(1242*375)
 ##Kalman filter defaults
-#P_default = np.array([[40.64558317, 0,           0, 0],
-#                      [0,          10,           0, 0],
-#                      [0,           0, 5.56278505, 0],
-#                      [0,           0,           0, 3]])
-#
-#R_default = np.array([[ 0.0,   0.0],
-#                      [ 0.0,   0.0]])
-#
-#
-##learned from all GT
-#Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
-#                      [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
-#                      [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
-#                      [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
-#
-#Q_default = 4*Q_default
+if USE_LEARNED_KF_PARAMS:
+    P_default = np.array([[40.64558317, 0,           0, 0],
+                          [0,          10,           0, 0],
+                          [0,           0, 5.56278505, 0],
+                          [0,           0,           0, 3]])
+    
+    R_default = np.array([[ 0.0,   0.0],
+                          [ 0.0,   0.0]])
+    
+    
+    #learned from all GT
+    Q_default = np.array([[  60.33442497,  102.95992102,   -5.50458177,   -0.22813535],
+                          [ 102.95992102,  179.84877761,  -13.37640528,   -9.70601621],
+                          [  -5.50458177,  -13.37640528,    4.56034398,    9.48945108],
+                          [  -0.22813535,   -9.70601621,    9.48945108,   22.32984314]])
+    
+    Q_default = 4*Q_default
 
 
 #####################replicate ORIG
@@ -130,34 +156,46 @@ p_birth_likelihood = 1.0/float(1242*375)
 #          2.47439006e-04],
 #       [ -1.22464245e-10,   5.04898570e-06,   2.47439006e-04,
 #          9.90202440e+00]])
-
-if SCALED:
-    P_default = np.array([[(NOISE_MAGNITUDE*600)**2,      0,           0,  0],
-                          [0,          10*600**2,           0,  0],
-                          [0,           0,      (NOISE_MAGNITUDE*180)**2,  0],
-                          [0,           0,           0, 10*180**2]])
-
-    R_default = np.array([[ (NOISE_MAGNITUDE*600)**2,             0.0],
-                          [          0.0,   (NOISE_MAGNITUDE*180)**2]])
-    Q_default = np.array([[     (600**2)*0.00003333,    (600**2)*0.0050,         0,         0],
-                          [         (600**2)*0.0050,       (600**2)*1.0,         0,         0],
-                          [              0,         0,(180**2)*0.00003333,    (180**2)*0.0050],
-                          [              0,         0,    (180**2)*0.0050,    (180**2)*1.0000]])
-    Q_default = Q_default*10**(-3)
-
 else:
-    P_default = np.array([[(NOISE_MAGNITUDE)**2,    0,           0,  0],
-                          [0,          10,           0,  0],
-                          [0,           0,   (NOISE_MAGNITUDE)**2,  0],
-                          [0,           0,           0, 10]])
+    if SCALED:
+        P_default = np.array([[(NOISE_SD*300)**2,      0,           0,  0],
+                              [0,          10*300**2,           0,  0],
+                              [0,           0,      (NOISE_SD*90)**2,  0],
+                              [0,           0,           0, 10*90**2]])
 
-    R_default = np.array([[ (NOISE_MAGNITUDE)**2,             0.0],
-                          [      0.0,   (NOISE_MAGNITUDE)**2]])
-    Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
-                          [         0.0050,       1.0,         0,         0],
-                          [              0,         0,0.00003333,    0.0050],
-                          [              0,         0,    0.0050,    1.0000]])
-    Q_default = Q_default*10**(-3)
+        R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
+                              [          0.0,   (NOISE_SD*90)**2]])
+        Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0050,         0,         0],
+                              [         (300**2)*0.0050,       (300**2)*1.0,         0,         0],
+                              [              0,         0,(90**2)*0.00003333,    (90**2)*0.0050],
+                              [              0,         0,    (90**2)*0.0050,    (90**2)*1.0000]])
+        Q_default = Q_default*10**(-3)
+        if TIME_SCALED:
+            Q_default = np.array([[     (300**2)*0.00003333,    (300**2)*0.0005,         0,         0],
+                                  [         (300**2)*0.0005,       (300**2)*.01,         0,         0],
+                                  [              0,         0,(90**2)*0.00003333,    (90**2)*0.0005],
+                                  [              0,         0,    (90**2)*0.0005,    (90**2)*.01]])    
+
+
+    else:
+        P_default = np.array([[(NOISE_SD)**2,    0,           0,  0],
+                              [0,          10,           0,  0],
+                              [0,           0,   (NOISE_SD)**2,  0],
+                              [0,           0,           0, 10]])
+
+        R_default = np.array([[ (NOISE_SD)**2,             0.0],
+                              [      0.0,   (NOISE_SD)**2]])
+        Q_default = np.array([[     0.00003333,    0.0050,         0,         0],
+                              [         0.0050,       1.0,         0,         0],
+                              [              0,         0,0.00003333,    0.0050],
+                              [              0,         0,    0.0050,    1.0000]])
+        Q_default = Q_default*10**(-3)
+
+        if TIME_SCALED:
+            Q_default = np.array([[     0.00003333,    0.0005,         0,         0],
+                                  [         0.0005,       .01,         0,         0],
+                                  [              0,         0,0.00003333,    0.0005],
+                                  [              0,         0,    0.0005,    .01]])  
 
 #learned from all GT
 #Q_default = np.array([[     0.0000,         0,    0.0050,         0],
@@ -178,6 +216,7 @@ H = np.array([[1.0,  0.0, 0.0, 0.0],
 
 #Gamma distribution parameters for calculating target death probabilities
 alpha_death = 2.0
+#beta_death = 0.5
 beta_death = 1.0
 theta_death = 1.0/beta_death
 
@@ -257,7 +296,7 @@ class Target:
         self.death_prob = -1 #calculate at every time instance
 
         self.all_states = [(self.x, self.width, self.height)]
-        self.all_time_stamps = [round(cur_time, 1)]
+        self.all_time_stamps = [round(cur_time, 2)]
 
         self.measurements = []
         self.measurement_time_stamps = []
@@ -278,55 +317,232 @@ class Target:
         return near_border
 
 
-    def kf_update(self, measurement, width, height, cur_time, meas_noise_cov):
+    def kf_update(self, measurement, meas_noise_cov):
         """ Perform Kalman filter update step and replace predicted position for the current time step
         with the updated position in self.all_states
         Input:
-        - measurement: the measurement (numpy array)
-        - cur_time: time when the measurement was taken (float)
+            - measurement: the measurement (numpy array)
+            - cur_time: time when the measurement was taken (float)
+        Output:
+            -updated_x: updated state, numpy array with dimensions (4,1)
+            -updated_P: updated covariance, numpy array with dimensions (4,4)
+
 !!!!!!!!!PREDICTION HAS BEEN RUN AT THE BEGINNING OF TIME STEP FOR EVERY TARGET!!!!!!!!!
         """
-        reformat_meas = np.array([[measurement[0]],
-                                  [measurement[1]]])
-        assert(self.x.shape == (4, 1))
         if USE_CONSTANT_R:
             S = np.dot(np.dot(H, self.P), H.T) + R_default
         else:
             S = np.dot(np.dot(H, self.P), H.T) + meas_noise_cov
         K = np.dot(np.dot(self.P, H.T), inv(S))
-        residual = reformat_meas - np.dot(H, self.x)
+        residual = measurement - np.dot(H, self.x)
         updated_x = self.x + np.dot(K, residual)
     #   updated_self.P = np.dot((np.eye(self.P.shape[0]) - np.dot(K, H)), self.P) #NUMERICALLY UNSTABLE!!!!!!!!
         updated_P = self.P - np.dot(np.dot(K, S), K.T) #not sure if this is numerically stable!!
-        self.x = updated_x
-        self.P = updated_P
+        return (updated_x, updated_P)
+
+    def update(self, measurement, width, height, cur_time, meas_noise_cov):
+        """ Perform update step and replace predicted position for the current time step
+        with the updated position in self.all_states
+        Input:
+        - measurement: the measurement (numpy array)
+        - cur_time: time when the measurement was taken (float)
+!!!!!!!!!PREDICTION HAS BEEN RUN AT THE BEGINNING OF TIME STEP FOR EVERY TARGET!!!!!!!!!
+        """        
+        reformat_meas = np.array([[measurement[0]],
+                                  [measurement[1]]])
+        assert(self.x.shape == (4, 1))
+
+        if KF_MOTION:
+            (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+        elif LSTM_MOTION:
+            if(len(self.all_states) <= LSTM_WINDOW):
+                (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+            else:
+                self.x = np.array([[measurement[0]],
+                                              [-99],
+                                   [measurement[1]],
+                                              [-99]])
+                self.P = np.array([[-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99]])
+        else:
+            assert(KNN_MOTION)
+            if(len(self.all_states) <= KNN_WINDOW):
+                (self.x, self.P) = self.kf_update(reformat_meas, meas_noise_cov)
+            else:
+                self.x = np.array([[measurement[0]],
+                                              [-99],
+                                   [measurement[1]],
+                                              [-99]])
+                self.P = np.array([[-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99],
+                                   [-99, -99, -99, -99]])
+
+        assert(self.x.shape == (4, 1))
+        assert(self.P.shape == (4, 4))
+
         self.width = width
         self.height = height
-        assert(self.all_time_stamps[-1] == round(cur_time, 1) and self.all_time_stamps[-2] != round(cur_time, 1))
+        assert(self.all_time_stamps[-1] == round(cur_time, 2) and self.all_time_stamps[-2] != round(cur_time, 2))
         assert(self.x.shape == (4, 1)), (self.x.shape, np.dot(K, residual).shape)
 
         self.all_states[-1] = (self.x, self.width, self.height)
         self.updated_this_time_instance = True
-        self.last_measurement_association = cur_time
+        self.last_measurement_association = cur_time        
 
-    def kf_predict(self, dt, cur_time):
+
+
+    def kf_predict(self, dt):
         """
         Run kalman filter prediction on this target
         Inputs:
             -dt: time step to run prediction on
-            -cur_time: the time the prediction is made for
+        Output:
+            -x_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)
+
         """
-        assert(self.all_time_stamps[-1] == round((cur_time - dt), 1))
         F = np.array([[1.0,  dt, 0.0, 0.0],
                       [0.0, 1.0, 0.0, 0.0],
                       [0.0, 0.0, 1.0,  dt],
                       [0.0, 0.0, 0.0, 1.0]])
         x_predict = np.dot(F, self.x)
         P_predict = np.dot(np.dot(F, self.P), F.T) + Q_default
-        self.x = x_predict
-        self.P = P_predict
+        return (x_predict, P_predict)
+
+
+    def lstm_predict(self):
+        """
+        Output:
+            -state_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)
+
+        """
+        # array of locations:
+        #[[x_t,     y_t],
+        # [x_t-1, y_t-1],
+        # ...
+        # [x_t-windowsize+1, y_t-windowsize+1]]
+        past_locations = np.zeros(LSTM_WINDOW*2)
+        for i in range(LSTM_WINDOW):
+            pos = -1 - LSTM_WINDOW +1 
+            past_locations[2*i] = self.all_states[pos+i][0][0,0]
+            past_locations[2*i+1] = self.all_states[pos+i][0][2,0]
+
+        ##########DAN Begin
+        cat = np.concatenate((past_locations, past_locations[:2]))
+        past_locations_scaled = scaler.transform(np.matrix(cat).reshape(1,8))
+        past_locations_scaled = past_locations_scaled.reshape((8,))[:6]
+        prediction = model.predict(past_locations_scaled.reshape(1,3,2))
+        unscaled_set = scaler.inverse_transform(np.concatenate((past_locations_scaled, prediction.ravel())).reshape(1,8))
+        unscaled_prediction = unscaled_set.ravel()[6:]
+
+        var_prediction = varmodel.predict(np.concatenate((past_locations_scaled,prediction.ravel())).reshape(1,4,2))
+        oldvals = np.concatenate((past_locations_scaled,prediction.ravel()))
+        newval = np.concatenate((oldvals, var_prediction.ravel()))
+        variance_set = varscaler.inverse_transform(newval.reshape(1,10))
+        variance_prediction_unscaled = variance_set.ravel()[8:]
+        #Fill me in here
+        x_predict = unscaled_prediction[0]
+        y_predict = unscaled_prediction[1]
+        x_var = variance_prediction_unscaled[0]
+#        if(x_var < MIN_LSTM_X_VAR):
+#            x_var = MIN_LSTM_X_VAR
+        y_var = variance_prediction_unscaled[1]
+#        if(y_var < MIN_LSTM_Y_VAR):
+#            y_var = MIN_LSTM_Y_VAR
+        #Dan's edit
+        if x_var < 0:
+            x_var = 1.2
+        if x_var > 100:
+            x_var = 100
+        if y_var < 0:
+            y_var = 2.8
+        if y_var > 50:
+            y_var = 50
+
+        xy_cov = 0
+        ##########DAN End
+
+        state_predict = np.array([[x_predict],
+                              [-99],
+                              [y_predict],
+                              [-99]])
+        P_predict = np.array([[x_var, -99, xy_cov, -99],
+                              [-99, -99, -99, -99],
+                              [xy_cov, -99, y_var, -99],
+                              [-99, -99, -99, -99]])
+        return (state_predict, P_predict)
+
+
+    def knn_predict(self):
+        """
+        Output:
+            -state_predict: predicted state, numpy array with dimensions (4,1)
+            -P_predict: predicted covariance, numpy array with dimensions (4,4)        
+        """
+        # array of locations:
+        #[[x_t,     y_t],
+        # [x_t-1, y_t-1],
+        # ...
+        # [x_t-windowsize+1, y_t-windowsize+1]]
+        past_locations = np.zeros((LSTM_WINDOW,2))
+        for i in range(LSTM_WINDOW):
+            past_locations[i, 0] = self.all_states[-1-i][0][0,0]
+            past_locations[i, 1] = self.all_states[-1-i][0][2,0]
+
+        ##########Philip Begin
+
+
+        #Fill me in here
+        x_predict = -99
+        y_predict = -99
+        x_var = -99
+        y_var = -99
+        xy_cov = -99
+        ##########Philip End
+
+        state_predict = np.array([[x_predict],
+                              [-99],
+                              [y_predict],
+                              [-99]])
+        P_predict = np.array([[x_var, -99, xy_cov, -99],
+                              [-99, -99, -99, -99],
+                              [xy_cov, -99, y_var, -99],
+                              [-99, -99, -99, -99]])
+        return (state_predict, P_predict)
+
+
+    def predict(self, dt, cur_time):
+        """
+        Run prediction on this target
+        Inputs:
+            -dt: time step to run prediction on
+            -cur_time: the time the prediction is made for
+        """
+        assert(self.all_time_stamps[-1] == round((cur_time - dt), 2))
+
+        if KF_MOTION:
+            (self.x, self.P) = self.kf_predict(dt)
+        elif LSTM_MOTION:
+            if(len(self.all_states) < LSTM_WINDOW):
+                (self.x, self.P) = self.kf_predict(dt)
+            else:
+                (self.x, self.P) = self.lstm_predict()
+        else:
+            assert(KNN_MOTION)
+            if(len(self.all_states) < KNN_WINDOW):
+                (self.x, self.P) = self.kf_predict(dt)
+            else:
+                (self.x, self.P) = self.knn_predict()
+
+        assert(self.x.shape == (4, 1))
+        assert(self.P.shape == (4, 4))
+
         self.all_states.append((self.x, self.width, self.height))
-        self.all_time_stamps.append(round(cur_time, 1))
+        self.all_time_stamps.append(round(cur_time, 2))
 
         if(self.x[0][0]<0 or self.x[0][0]>=CAMERA_PIXEL_WIDTH or \
            self.x[2][0]<0 or self.x[2][0]>=CAMERA_PIXEL_HEIGHT):
@@ -335,9 +551,7 @@ class Target:
             if USE_GENERATED_DATA:
                 self.offscreen = False
 
-        assert(self.x.shape == (4, 1))
         self.updated_this_time_instance = False
-
 
 
 ################### def target_death_prob(self, cur_time, prev_time):
@@ -387,22 +601,24 @@ class Target:
             #scipy.special.gdtrc(b, a, x) calculates 
             #integral(gamma_dist(k = a, theta = b))from x to infinity
             last_assoc = self.last_measurement_association
-            if USE_GENERATED_DATA:
-                cur_time = cur_time/10.0
-                prev_time = prev_time/10.0
-                last_assoc = self.last_measurement_association/10.0
+#            if USE_GENERATED_DATA:
+            cur_time = cur_time/10.0
+            prev_time = prev_time/10.0
+            last_assoc = self.last_measurement_association/10.0
 
-            #I think this is correct
-            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
-                     - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
-            death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
+#            #I think this is correct
+#            death_prob = gdtrc(theta_death, alpha_death, prev_time - last_assoc) \
+#                     - gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+#            death_prob /= gdtrc(theta_death, alpha_death, prev_time - last_assoc)
 #            return death_prob
 
-#            #this is used in paper's code
-#            time_step = cur_time - prev_time
-#            death_prob = gdtrc(theta_death, alpha_death, cur_time - last_assoc) \
-#                       - gdtrc(theta_death, alpha_death, cur_time - last_assoc + time_step)
-#            death_prob /= gdtrc(theta_death, alpha_death, cur_time - last_assoc)
+            #this is used in paper's code
+            #Basically this is predicting death over the next time step, as opposed
+            #to over the previous time step, which is what I wrote above
+            time_step = cur_time - prev_time
+            death_prob = gdtrc(theta_death, alpha_death, cur_time - last_assoc) \
+                       - gdtrc(theta_death, alpha_death, cur_time - last_assoc + time_step)
+            death_prob /= gdtrc(theta_death, alpha_death, cur_time - last_assoc)
 
             assert(death_prob >= 0.0 and death_prob <= 1.0), (death_prob, cur_time, prev_time)
 
@@ -558,7 +774,7 @@ class TargetSet:
 
         if ONLINE_DELAY == 0:
             for target in self.living_targets:
-                assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 1))
+                assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                 x_pos = target.all_states[-1][0][0][0]
                 y_pos = target.all_states[-1][0][2][0]
                 width = target.all_states[-1][1]
@@ -578,7 +794,7 @@ class TargetSet:
             print delayed_liv_targets
             assert(delayed_frame_idx == frame_idx - ONLINE_DELAY), (delayed_frame_idx, frame_idx, ONLINE_DELAY)
             for target in delayed_liv_targets:
-                assert(target.all_time_stamps[-1] == round((frame_idx - ONLINE_DELAY)*default_time_step, 1)), (target.all_time_stamps[-1], frame_idx, ONLINE_DELAY, round((frame_idx - ONLINE_DELAY)*default_time_step, 1))
+                assert(target.all_time_stamps[-1] == round((frame_idx - ONLINE_DELAY)*default_time_step, 2)), (target.all_time_stamps[-1], frame_idx, ONLINE_DELAY, round((frame_idx - ONLINE_DELAY)*default_time_step, 2))
                 x_pos = target.all_states[-1][0][0][0]
                 y_pos = target.all_states[-1][0][2][0]
                 width = target.all_states[-1][1]
@@ -604,7 +820,7 @@ class TargetSet:
                     q_idx+=1
                     assert(delayed_frame_idx == cur_frame_idx), (delayed_frame_idx, cur_frame_idx, ONLINE_DELAY)
                     for target in delayed_liv_targets:
-                        assert(target.all_time_stamps[-1] == round((cur_frame_idx)*default_time_step, 1))
+                        assert(target.all_time_stamps[-1] == round((cur_frame_idx)*default_time_step, 2))
                         x_pos = target.all_states[-1][0][0][0]
                         y_pos = target.all_states[-1][0][2][0]
                         width = target.all_states[-1][1]
@@ -617,7 +833,7 @@ class TargetSet:
                         f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
                             (cur_frame_idx, target.id_, left, top, right, bottom))
                 for target in self.living_targets:
-                    assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 1))
+                    assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                     x_pos = target.all_states[-1][0][0][0]
                     y_pos = target.all_states[-1][0][2][0]
                     width = target.all_states[-1][1]
@@ -639,7 +855,7 @@ class TargetSet:
             every_target = self.collect_ancestral_targets()
             f = open(results_filename, "w")
             for frame_idx in range(num_frames):
-                timestamp = round(frame_idx*default_time_step, 1)
+                timestamp = round(frame_idx*default_time_step, 2)
 
                 for target in every_target:
                     if timestamp in target.all_time_stamps:
@@ -663,7 +879,7 @@ class TargetSet:
         else:
             f = open(results_filename, "w")
             for frame_idx in range(num_frames):
-                timestamp = round(frame_idx*default_time_step, 1)
+                timestamp = round(frame_idx*default_time_step, 2)
                 for target in self.all_targets:
                     if timestamp in target.all_time_stamps:
                         x_pos = target.all_states[target.all_time_stamps.index(timestamp)][0][0][0]
@@ -726,6 +942,9 @@ class Particle:
         self.pi_clutter_debug = -1
         self.pi_targets_debug = []
 
+        #bool for debugging, indicating maximum importance weight from previous time instance
+        self.max_importance_weight = False 
+
     def create_child(self):
         global NEXT_PARTICLE_ID
         child_particle = Particle(NEXT_PARTICLE_ID)
@@ -766,7 +985,7 @@ class Particle:
                 assert(meas_index >= 0 and meas_index < len(measurement_scores)), (meas_index, len(measurement_scores), measurement_scores)
                 if not (MAX_1_MEAS_UPDATE and self.targets.living_targets[meas_assoc].updated_this_time_instance):
                     score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[meas_index])
-                    self.targets.living_targets[meas_assoc].kf_update(measurements[meas_index], widths[meas_index], \
+                    self.targets.living_targets[meas_assoc].update(measurements[meas_index], widths[meas_index], \
                                     heights[meas_index], cur_time, MEAS_NOISE_COVS[meas_source_index][score_index])
             else:
                 #otherwise the measurement was associated with clutter
@@ -977,8 +1196,8 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
                 for target in particle.targets.living_targets:
                     dt = time_stamp - prev_time_stamp
                     assert(abs(dt - default_time_step) < .00000001), (dt, default_time_step, time_stamp, prev_time_stamp)
-                    target.kf_predict(dt, time_stamp)
-                #update particle death probabilities AFTER kf_predict so that targets that moved
+                    target.predict(dt, time_stamp)
+                #update particle death probabilities AFTER predict so that targets that moved
                 #off screen this time instance will be killed
                 particle.update_target_death_probabilities(time_stamp, prev_time_stamp)
 
@@ -1089,6 +1308,19 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
 
         iter+=1
         print "finished the time step"
+#DEBUGGING        
+        cur_max_imprt_weight = -1
+        for particle in particle_set:
+            particle.max_importance_weight = False
+            if(particle.importance_weight > cur_max_imprt_weight):
+                cur_max_imprt_weight = particle.importance_weight
+        particle_count_with_max_imprt_weight = 0
+        for particle in particle_set:
+            if(particle.importance_weight == cur_max_imprt_weight):
+                particle.max_importance_weight = True
+                particle_count_with_max_imprt_weight += 1
+        print particle_count_with_max_imprt_weight, "particles have max importance weight of", cur_max_imprt_weight
+#END DEBUGGING
 
     max_imprt_weight = -1
     for particle in particle_set:
@@ -1305,24 +1537,46 @@ def match_target_ids(particle1_targets, particle2_targets):
 
 if __name__ == "__main__":
     
+
     NEXT_PARTICLE_ID = 0
     if RUN_ONLINE:
         NEXT_TARGET_ID = 0 #all targets have unique IDs, even if they are in different particles
     
     # check for correct number of arguments. if user_sha and email are not supplied,
     # no notification email is sent (this option is used for auto-updates)
-    if len(sys.argv)!=9:
-        print "Supply 8 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
-        print "use_regionlets_and_lsvm (bool), sort_dets_on_intervals (bool), run_idx, total_runs, seq_idx"
+    if len(sys.argv)!=10:
+        print "Supply 9 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
+        print "use_regionlets(bool) use_mscnn(bool) sort_dets_on_intervals (bool), run_idx, total_runs, seq_idx"
         print "received ", len(sys.argv), " arguments"
         for i in range(len(sys.argv)):
             print sys.argv[i]
         sys.exit(1);
 
     N_PARTICLES = int(sys.argv[1])
-    run_idx = int(sys.argv[6]) #the index of this run
-    total_runs = int(sys.argv[7]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
-    seq_idx = int(sys.argv[8]) #the index of the sequence to process
+    run_idx = int(sys.argv[7]) #the index of this run
+    total_runs = int(sys.argv[8]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
+    seq_idx = int(sys.argv[9]) #the index of the sequence to process
+
+    #########################
+    # LSTM initialization
+    model = Sequential()
+    model.add(LSTM(32, input_shape=(3,2)))
+    model.add(Dense(2))
+    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.load_weights('/atlas/u/daniter/models/cv-mu-weights%d.h5' % seq_idx)
+
+    varmodel = Sequential()
+    varmodel.add(LSTM(32, input_shape=(4,2)))
+    varmodel.add(Dense(2))
+    varmodel.compile(loss='mean_squared_error', optimizer='adam')
+    varmodel.load_weights('/atlas/u/daniter/models/cv-cov-weights%d.h5' % seq_idx)
+    scaler = None
+    varscaler = None
+    with open('/atlas/u/daniter/models/varscaler.pickle', 'r') as handle:
+      varscaler = pickle.load(handle)
+    with open('/atlas/u/daniter/models/scaler.pickle', 'r') as handle:
+      scaler = pickle.load(handle)
+    #########################
 
     for i in range(2,6):
         if(sys.argv[i] != 'True' and sys.argv[i] != 'False'):
@@ -1333,14 +1587,12 @@ if __name__ == "__main__":
     #Should ignored ground truth objects be included when calculating probabilities? (double check specifics)
     include_ignored_gt = (sys.argv[2] == 'True')
     include_dontcare_in_gt = (sys.argv[3] == 'True')
-    use_regionlets_and_lsvm = (sys.argv[4] == 'True')
-    sort_dets_on_intervals = (sys.argv[5] == 'True')
-#   use_regionlets = (sys.argv[10] == 'True')
-    use_regionlets = None
-
+    use_regionlets = (sys.argv[4] == 'True')
+    use_mscnn = (sys.argv[5] == 'True')
+    sort_dets_on_intervals = (sys.argv[6] == 'True')
 
     DESCRIPTION_OF_RUN = get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
-                           use_regionlets_and_lsvm, sort_dets_on_intervals, use_regionlets)
+                            sort_dets_on_intervals, use_regionlets, use_mscnn)
 
     results_folder_name = '%s/%d_particles' % (DESCRIPTION_OF_RUN, N_PARTICLES)
 #   results_folder = '%s/rbpf_KITTI_results_par_exec_trainAllButCurSeq_10runs_dup3/%s' % (DIRECTORY_OF_ALL_RESULTS, results_folder_name)
@@ -1383,13 +1635,10 @@ if __name__ == "__main__":
         if sort_dets_on_intervals:
             MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
             REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 20)]
-            LSVM_SCORE_INTERVALS = [i/2.0 for i in range(0, 6)]
     #       REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
-    #       LSVM_SCORE_INTERVALS = [i/2.0 for i in range(0, 6)]
         else:
             MSCNN_SCORE_INTERVALS = [.5]                                
             REGIONLETS_SCORE_INTERVALS = [2]
-            LSVM_SCORE_INTERVALS = [0]
 
 
         #train on all training sequences, except the current sequence we are testing on
@@ -1397,18 +1646,8 @@ if __name__ == "__main__":
         #training_sequences = [i for i in SEQUENCES_TO_PROCESS if i != seq_idx]
         #training_sequences = [0]
 
-        #use regionlets and lsvm detections
-        if use_regionlets_and_lsvm:
-            SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS, LSVM_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-                    get_meas_target_sets_lsvm_and_regionlets(training_sequences, REGIONLETS_SCORE_INTERVALS, \
-                    LSVM_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
-                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                    include_ignored_detections = include_ignored_detections)
-
         #only use regionlets detections
-        else: 
+        if use_regionlets and (not use_mscnn):
             SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS]
             (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
                 MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
@@ -1417,26 +1656,29 @@ if __name__ == "__main__":
                 include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
                 include_ignored_detections = include_ignored_detections)
 
+        #only use mscnn detections
+        elif (not use_regionlets) and use_mscnn:
+            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
+            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+                get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
+                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+                include_ignored_detections = include_ignored_detections)
+
         #use mscnn and regionlets detections
-#           if use_regionlets:
-#               SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
-#               (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-#                   MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-#                       get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
-#                       REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
-#                       include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-#                       include_ignored_detections = include_ignored_detections)
-#
-#           #only use mscnn detections
-#           else: 
-#               SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
-#               (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-#                   MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-#                   get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
-#                   obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
-#                   include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-#                   include_ignored_detections = include_ignored_detections)
-#
+        elif use_regionlets and use_mscnn:
+            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
+            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+                    get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
+                    REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+                    include_ignored_detections = include_ignored_detections)
+
+        else:
+            print "Unexpected combination of detections"
+            sys.exit(1);        
 
         params = Parameters(TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES,\
                  BIRTH_PROBABILITIES, MEAS_NOISE_COVS, R_default, H,\
@@ -1458,10 +1700,15 @@ if __name__ == "__main__":
         tA = time.time()
         if USE_GENERATED_DATA:
             meas_target_set = gen_data(measurements_filename)
-            (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
+            if PROFILE: 
+                cProfile.run('run_rbpf_on_targetset([meas_target_set], results_filename, params)')
+            else:
+                (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset([meas_target_set], results_filename, params)
         else:       
-            (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)
-        #cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
+            if PROFILE:
+                cProfile.run('run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)')
+            else:
+                (estimated_ts, cur_seq_info, number_resamplings) = run_rbpf_on_targetset(measurementTargetSetsBySequence[seq_idx], results_filename, params)
         print "done processing sequence: ", seq_idx
         
         tB = time.time()

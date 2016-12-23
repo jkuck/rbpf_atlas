@@ -3,10 +3,14 @@ from numpy.linalg import inv
 import random
 
 import math
+import scipy.stats as ss
+from scipy.special import gdtrc
 
 from gen_data import SCALED
 from gen_data import NOISE_SD
-
+#from gen_data import default_time_step
+default_time_step = .01
+from gen_data import prob_detection
 
 class Parameters:
     def __init__(self, target_emission_probs, clutter_probabilities,\
@@ -25,12 +29,13 @@ class Parameters:
         self.birth_probabilities = birth_probabilities
 
         self.meas_noise_cov = None
-        if SCALED:
-            self.R_default = np.array([[ (NOISE_SD*600)**2,             0.0],
-                                       [          0.0,   (NOISE_SD*180)**2]])
-        else:
-            self.R_default = np.array([[ (NOISE_SD)**2,         0.0],
-                                       [      0.0,   (NOISE_SD)**2]])
+        self.R_default = R_default
+#        if SCALED:
+#            self.R_default = np.array([[ (NOISE_SD*300)**2,             0.0],
+#                                       [          0.0,   (NOISE_SD*90)**2]])
+#        else:
+#            self.R_default = np.array([[ (NOISE_SD)**2,         0.0],
+#                                       [      0.0,   (NOISE_SD)**2]])
 
         self.H = H
 
@@ -155,7 +160,7 @@ def sample_and_reweight(particle, measurement_lists, \
         assert(p_target_deaths[len(p_target_deaths) - 1] >= 0 and p_target_deaths[len(p_target_deaths) - 1] <= 1), (p_target_deaths[len(p_target_deaths) - 1], cur_time)
 
 
-    (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs, importance_reweight) = \
+    (targets_to_kill, measurement_associations, importance_reweight) = \
         sample_meas_assoc_and_death(particle, measurement_lists, particle.targets.living_count, p_target_deaths, \
                                     cur_time, measurement_scores, params)
 
@@ -168,14 +173,10 @@ def sample_and_reweight(particle, measurement_lists, \
 
 
     assert(num_targs == particle.targets.living_count)
+    #sort targets_to_kill
+    targets_to_kill.sort()
     #double check targets_to_kill is sorted
     assert(all([targets_to_kill[i] <= targets_to_kill[i+1] for i in xrange(len(targets_to_kill)-1)]))
-
-#    imprt_re_weight = exact_probability/proposal_probability
-
-#    assert(imprt_re_weight != 0.0), (exact_probability, proposal_probability)
-
-#    particle.likelihood_DOUBLE_CHECK_ME = exact_probability
 
     return (measurement_associations, targets_to_kill, importance_reweight)
 
@@ -200,45 +201,18 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
     - targets_to_kill: a list of targets that have been sampled to die (not killed yet)
     - measurement_associations: type list, measurement_associations[i] is a list of associations for  
         the measurements in measurement_lists[i]
-    - proposal_probability: proposal probability of the sampled deaths and associations
         
     """
     assert(len(measurement_lists) == len(measurement_scores))
     measurement_associations = []
-    proposal_probability = 1.0
     for meas_source_index in range(len(measurement_lists)):
-        (cur_associations, cur_proposal_prob, importance_reweight) = associate_measurements_sequentially\
+        (cur_associations, targets_to_kill, importance_reweight) = associate_measurements_sequentially\
             (particle, meas_source_index, measurement_lists[meas_source_index], \
              total_target_count, p_target_deaths, measurement_scores[meas_source_index],\
              params)
         measurement_associations.append(cur_associations)
-        proposal_probability *= cur_proposal_prob
 
     assert(len(measurement_associations) == len(measurement_lists))
-
-############################################################################################################
-    #sample target deaths from unassociated targets
-    unassociated_targets = []
-    unassociated_target_death_probs = []
-
-    for i in range(total_target_count):
-        target_unassociated = True
-        for meas_source_index in range(len(measurement_associations)):
-            if (i in measurement_associations[meas_source_index]):
-                target_unassociated = False
-        if target_unassociated:
-            unassociated_targets.append(i)
-            unassociated_target_death_probs.append(p_target_deaths[i])
-        else:
-            unassociated_target_death_probs.append(0.0)
-
-    (targets_to_kill, death_probability) =  \
-        sample_target_deaths(particle, unassociated_targets, cur_time)
-
-
-    #probability of sampling all associations
-    proposal_probability *= death_probability
-    assert(proposal_probability != 0.0)
 
     #debug
     for meas_source_index in range(len(measurement_associations)):
@@ -247,9 +221,14 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
                    measurement_associations[meas_source_index].count(i) == 1), (measurement_associations[meas_source_index],  measurement_list, total_target_count, p_target_deaths)
     #done debug
 
-    return (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs, importance_reweight)
+    return (targets_to_kill, measurement_associations, importance_reweight)
 
 
+
+class SampledEvent:
+    def __init__(self, assoc_index, dead_targ_idx):
+        self.assoc_index = assoc_index
+        self.dead_targ_idx = dead_targ_idx
 
 def associate_measurements_sequentially(particle, meas_source_index, measurement_list, total_target_count, \
     p_target_deaths, measurement_scores, params):
@@ -267,20 +246,60 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 
     Output:
     - list_of_measurement_associations: list of associations for each measurement
-    - proposal_probability: proposal probability of the sampled deaths and associations
+    - indices_to_kill: list of target indices to kill
         
     """
-    pb = .01 #birth prior
-    birth_likelihood = .0159
-    if SCALED:
-        birth_likelihood = birth_likelihood/(600*180)
-#    birth_likelihood = 1.0/16.0 
-    CP = 0.0 #clutter prior
-    CD = 1.0/4.0 #clutter likelihood
 
+
+#    def bin_pdf(x, p, n):
+#        """
+#        Probability density function of a Binomial distribution.
+#
+#        Input:
+#          x   - Location where to evaluate the PDF.
+#          p - 'Probability' parameter 
+#          n   - 'Sample size' parameter
+#        """
+#        hh = ss.binom(n, p)
+#        return hh.pmf(x)    
+    #avoid 0/0 = nan below
+    for i in range(len(p_target_deaths)):
+        if p_target_deaths[i] == 1.0:
+            p_target_deaths[i] = .999999
+
+    if(particle.max_importance_weight):
+        print "number of measurements:", len(measurement_list)
+
+
+    def nCr(n,r):
+        return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
+
+    def bin_pdf(x,p,n):
+        if (x > n) or (n < 0):
+            return 0
+        else:
+            return nCr(n,x) * p**x * (1-p)**(n-x)
+
+
+    def death_prob_of_assoc_target(dt):
+        #return the probability of death over the next time step,
+        #where dt is the duration of one time step
+        alpha_death = 2.0
+        beta_death = 1.0
+        theta_death = 1.0/beta_death
+        return 1-gdtrc(theta_death, alpha_death, dt)
+
+    pb = .01 #birth prior
+    birth_likelihood = 0.0151
+#    birth_likelihood = 1.0/16.0 
+#    CP = 0.0 #clutter prior, DOESN"T HAVE ONE!!
+    CD = 1.0/16.0 #clutter likelihood
+    if SCALED:
+        birth_likelihood = birth_likelihood/(300*90)
+        CD = CD/(300*90)
 
     list_of_measurement_associations = []
-    proposal_probability = 1.0
+    indices_to_kill = []
 
     #sample measurement associations
     birth_count = 0
@@ -289,60 +308,145 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 
     importance_reweight = 1.0
 
-    def get_remaining_meas_count(cur_meas_index, cur_meas_score):
-        assert(len(measurement_scores) == len(measurement_list))
-        remaining_meas_count = 0
-        cur_meas_score_idx = params.get_score_index(cur_meas_score, meas_source_index)
-        for idx in range(cur_meas_index+1, len(measurement_list)):
-            if(cur_meas_score_idx ==\
-               params.get_score_index(measurement_scores[idx], meas_source_index)):
-                remaining_meas_count = remaining_meas_count + 1
-
-        return remaining_meas_count
-
+    #the number of targets that we haven't associated with a measurement or killed
+    unas_living_targ_count = particle.targets.living_count
+    #the number of targets that we haven't killed
+    cur_living_targ_count = particle.targets.living_count
+    assert(unas_living_targ_count == len(particle.targets.living_targets))
     for (index, cur_meas) in enumerate(measurement_list):
         meas_score = measurement_scores[index]
-        #create proposal distribution for the current measurement
-        #compute target association proposal probabilities
-        proposal_distribution_list = []
+        #create proposal distribution for the current measurement with the following entries:
+        # 1: clutter, no deaths
+        # (unassociated, living target count): target association, no deaths
+        # 1: target birth, no deaths
+        #
+        # (living target count): clutter association, 1 death
+        # (unassociated, living target count)*(living target count - 1): target association, 1 death
+        # (living target count): target birth, 1 death
+
+
         priors = []
         likelihoods = []
-        for target_index in range(total_target_count):
-            cur_target_likelihood = memoized_assoc_likelihood(particle, cur_meas, meas_source_index, target_index, params, meas_score)
+        events = []
 
-            if((not target_index in list_of_measurement_associations)\
-                and p_target_deaths[target_index] < 1.0):
-                cur_target_prior = (1-pb)*(1-CP)/total_target_count
-            else:
-                cur_target_prior = 0.0
+        rem_meas = len(measurement_list) - index #number of remaining measurements
+        #No target deaths
+        no_death_prior = np.prod(np.ones(len(p_target_deaths))-np.array(p_target_deaths))
+        #
+        # Priors with no target deaths
+        #
+        pt = 0 # One of targets
+        pn = 0 # New target
+        pc = 0 # Clutter
+        for t in range(0,min(unas_living_targ_count,rem_meas)+1): #t of the remaining measurements are associated with a target
+            for n in range(0,rem_meas-t+1): #n of the remaining measurements are associated with a birth
+                #probability of t target associations and n measurement
+                #associations
+                pp = bin_pdf(n,pb,rem_meas-t) * bin_pdf(t,prob_detection,min(unas_living_targ_count,rem_meas))
+                pt = pt + float(t)/rem_meas * pp
+                pn = pn + float(n)/rem_meas * pp
+                pc = pc + float(rem_meas-t-n)/rem_meas * pp
 
-            proposal_distribution_list.append(cur_target_likelihood*cur_target_prior)
-            priors.append(cur_target_prior)
-            likelihoods.append(cur_target_likelihood)
-
-
-        #compute birth association proposal probability
-        proposal_distribution_list.append(pb*birth_likelihood)
-        priors.append(pb)
-        likelihoods.append(birth_likelihood)
-
-        cur_clutter_prior = 0.0
-        proposal_distribution_list.append(CP*(1-pb)*CD)
-        priors.append(CP*(1-pb))
+        #clutter association
+        priors.append(no_death_prior*pc)
         likelihoods.append(CD)
+        events.append(SampledEvent(assoc_index=-1, dead_targ_idx=None))
 
-        #normalize the proposal distribution
-        proposal_distribution = np.asarray(proposal_distribution_list)
-        assert(np.sum(proposal_distribution) != 0.0), (index, remaining_meas_count, len(proposal_distribution), proposal_distribution, birth_count, clutter_count, len(measurement_list), total_target_count)
+        #living target association
+        check_living_unassoc_targ_count = 0
+        for target_index in range(total_target_count):
+            if((not target_index in list_of_measurement_associations) and \
+               (not target_index in indices_to_kill)):
+                check_living_unassoc_targ_count += 1
+                cur_target_likelihood = memoized_assoc_likelihood(particle, cur_meas, meas_source_index,\
+                                                                  target_index, params, meas_score)
+                priors.append(no_death_prior*pt/unas_living_targ_count)
+                likelihoods.append(cur_target_likelihood)
+                events.append(SampledEvent(assoc_index=target_index, dead_targ_idx=None))
+        assert(check_living_unassoc_targ_count == unas_living_targ_count), (check_living_unassoc_targ_count, unas_living_targ_count)
+        #new target
+        priors.append(no_death_prior*pn)
+        likelihoods.append(birth_likelihood)
+        events.append(SampledEvent(assoc_index=total_target_count, dead_targ_idx=None))
+        #
+        # Priors with 1 target death
+        #
+        pt = 0 # One of targets
+        pn = 0 # New target
+        pc = 0 # Clutter
+        for t in range(0,min(unas_living_targ_count-1,rem_meas)+1): #t of the remaining measurements are associated with a target
+            for n in range(0,rem_meas-t+1): #n of the remaining measurements are associated with a birth
+                #probability of t target associations and n measurement
+                #associations
+                pp = bin_pdf(n,pb,rem_meas-t) * bin_pdf(t,prob_detection,min(unas_living_targ_count-1,rem_meas))
+                pt = pt + float(t)/rem_meas * pp
+                pn = pn + float(n)/rem_meas * pp
+                pc = pc + float(rem_meas-t-n)/rem_meas * pp
 
-        proposal_distribution /= float(np.sum(proposal_distribution))
-        assert(len(proposal_distribution) == total_target_count+2)
+        #
+        # Association to clutter, target with index target_index dies
+        #
+        check_living_targ_count = 0
+        for target_index in range(total_target_count):
+            if((not target_index in indices_to_kill)):
+                check_living_targ_count += 1
+                cur_death_prior = no_death_prior/(1.0 - p_target_deaths[target_index])*p_target_deaths[target_index]
+                priors.append(cur_death_prior*pc)
+                likelihoods.append(CD)
+                events.append(SampledEvent(assoc_index=-1, dead_targ_idx=target_index))
+        assert(check_living_targ_count == cur_living_targ_count), (check_living_targ_count, cur_living_targ_count)
+
+        #
+        # Association to target assoc_target_ind, target dead_target_idx dies
+        #
+        check_living_unassoc_targ_count = 0
+        for assoc_target_ind in range(total_target_count):
+            if((not assoc_target_ind in list_of_measurement_associations) and \
+               (not assoc_target_ind in indices_to_kill)):
+                check_living_unassoc_targ_count += 1
+                for dead_target_idx in range(total_target_count):
+                    if (not dead_target_idx in indices_to_kill) and (dead_target_idx != assoc_target_ind):
+                        cur_death_prior = no_death_prior/(1.0 - p_target_deaths[dead_target_idx])*p_target_deaths[dead_target_idx]
+                        priors.append(cur_death_prior*pt/unas_living_targ_count)
+                        cur_target_likelihood = memoized_assoc_likelihood(particle, cur_meas, meas_source_index,\
+                                                                          assoc_target_ind, params, meas_score)                        
+                        likelihoods.append(cur_target_likelihood)
+                        events.append(SampledEvent(assoc_index=assoc_target_ind, dead_targ_idx=dead_target_idx))
+        assert(check_living_unassoc_targ_count == unas_living_targ_count), (check_living_unassoc_targ_count, unas_living_targ_count)
+
+        #
+        # Association to new target, target with index target_index dies
+        #
+        check_living_targ_count = 0
+        for target_index in range(total_target_count):
+            if((not target_index in indices_to_kill)):
+                check_living_targ_count += 1
+                cur_death_prior = no_death_prior/(1.0 - p_target_deaths[target_index])*p_target_deaths[target_index]
+                priors.append(cur_death_prior*pn)
+                likelihoods.append(birth_likelihood)
+                events.append(SampledEvent(assoc_index=total_target_count, dead_targ_idx=target_index))
+        assert(check_living_targ_count == cur_living_targ_count), (check_living_targ_count, cur_living_targ_count)
 
 
-        #ORIGINAL APPROACH BELOW
+        #create proposal distribution for the current measurement with the following entries:
+        # 1: clutter, no deaths
+        # (unassociated, living target count): target association, no deaths
+        # 1: target birth, no deaths
+        #
+        # (living target count): clutter association, 1 death
+        # (unassociated, living target count)*(living target count - 1): target association, 1 death
+        # (living target count): target birth, 1 death
+
+        #Sample
+        assert(len(priors) == len(likelihoods))
+        assert(len(priors) == len(events))
+        assert(len(priors) == (2 + unas_living_targ_count + 2*cur_living_targ_count + unas_living_targ_count*(cur_living_targ_count-1))), (len(priors), unas_living_targ_count, cur_living_targ_count, total_target_count)
         priors = np.asarray(priors)
+        debug_priors = priors
+        assert(float(np.sum(priors)) > 0), (priors, total_target_count, remaining_meas_count, len(measurement_list), cur_living_targ_count, unas_living_targ_count)
         priors /= float(np.sum(priors))
-        original_proposal_distr = np.multiply(priors, likelihoods)        
+        original_proposal_distr = np.multiply(priors, likelihoods)   
+        assert(float(np.sum(original_proposal_distr)) > 0), (priors, debug_priors, likelihoods, original_proposal_distr, total_target_count, remaining_meas_count, len(measurement_list), cur_living_targ_count, unas_living_targ_count)             
         original_proposal_distr /= float(np.sum(original_proposal_distr))
 
 
@@ -353,15 +457,39 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
         importance_reweight = importance_reweight*likelihoods[sampled_assoc_idx]*\
                               priors[sampled_assoc_idx]/original_proposal_distr[sampled_assoc_idx]
 
-        if(sampled_assoc_idx <= total_target_count): #target or birth association
-            list_of_measurement_associations.append(sampled_assoc_idx)
-            if(sampled_assoc_idx == total_target_count):
-                birth_count += 1
-        else: #clutter association
-            assert(sampled_assoc_idx == total_target_count+1)
-            list_of_measurement_associations.append(-1)
-            clutter_count += 1
-        proposal_probability *= proposal_distribution[sampled_assoc_idx]
+        #process the sampled event
+        assoc_index = events[sampled_assoc_idx].assoc_index
+        if(assoc_index in list_of_measurement_associations):
+            assert(assoc_index == -1 or assoc_index == total_target_count)
+        if(assoc_index>=0 and assoc_index < total_target_count):
+            unas_living_targ_count -= 1
+            p_target_deaths[assoc_index] = death_prob_of_assoc_target(default_time_step)
+        list_of_measurement_associations.append(assoc_index)
+
+        death_index = events[sampled_assoc_idx].dead_targ_idx
+        assert(not death_index in indices_to_kill), (death_index, indices_to_kill)
+        if(death_index):
+            cur_living_targ_count -= 1
+            if(not death_index in list_of_measurement_associations):
+                unas_living_targ_count -= 1
+            p_target_deaths[death_index] = 0.0
+            indices_to_kill.append(death_index)
+
+#        #debugging
+#        if(particle.max_importance_weight):
+#            if(assoc_index == -1):
+#                print "measurement", index, "associated with clutter"
+#            elif(assoc_index == total_target_count):
+#                print "measurement", index, "associated with a new target"
+#            else:
+#                print "measurement", index, "associated with target", assoc_index
+#
+#            if(death_index):
+#                print "target", death_index, "died"
+#            else:
+#                print "no targets died"
+#
+#        #end debugging
 
         remaining_meas_count -= 1
 
@@ -369,7 +497,7 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 #        assert(birth_count <= params.max_birth_count(meas_source_index, meas_score)), (birth_count, params.max_birth_count(meas_source_index, meas_score), index, remaining_meas_count, len(proposal_distribution), proposal_distribution, birth_count, clutter_count, len(measurement_list), total_target_count)
 
     assert(remaining_meas_count == 0)
-    return(list_of_measurement_associations, proposal_probability, importance_reweight)
+    return(list_of_measurement_associations, indices_to_kill, importance_reweight)
 
 
 def sample_target_deaths(particle, unassociated_targets, cur_time):
