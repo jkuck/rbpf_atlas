@@ -59,8 +59,8 @@ from gen_data import NUM_GEN_FRAMES
 from gen_data import NOISE_SD
 
 #MOTION options
-KF_MOTION = False
-LSTM_MOTION = True
+KF_MOTION = True
+LSTM_MOTION = False
 KNN_MOTION = False
 #one of the above should be true, others false
 assert([KF_MOTION, LSTM_MOTION, KNN_MOTION].count(True)==1)
