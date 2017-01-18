@@ -63,10 +63,42 @@ class tData:
         self.valid      = False
         self.tracker    = -1
 
+        #jdk extras
+        self.imprt_weight = None #importance weight of the particle
+        #boolean, true if this time instane is the first when this particle has the max importance weight
+        self.frst_time_max_imprt_wt = None
+        self.target_count = None #the number of targets that are believed to be alive at this time instance
+
+
+
     def __str__(self):
         attrs = vars(self)
         return '\n'.join("%s: %s" % item for item in attrs.items())
+#jdk
+def write_to_annotated_results(object, type, filename):
+    """
+    Inputs:
+    - object: type tData, either a ground truth target or detection
+    - type: string, possibilities are
+        - "tp" (true positive, object is a detection)
+        - "fp" (false positive, object is a detection)
+        - "fn" (false negative, object is a ground truth target)
+        - "id" (id switch, object is a detection)
+    - filename: the file to write to
+    """
+    with open(filename, "a") as myfile:
+        #false negative with no associated detection
+        if object.imprt_weight == None:
+            assert(object.frst_time_max_imprt_wt==None and object.target_count==None)
+            myfile.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1 %s\n" % \
+                        (object.frame, object.track_id, object.x1, object.y1, object.x2, object.y2,
+                         type))
 
+        else:
+            myfile.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1 %s %f %s %d\n" % \
+                        (object.frame, object.track_id, object.x1, object.y1, object.x2, object.y2,
+                         type, object.imprt_weight, object.frst_time_max_imprt_wt, object.target_count))
+#end jdk
 class trackingEvaluation(object):
     """ tracking statistics (CLEAR MOT, id-switches, fragments, ML/PT/MT, precision/recall)
              MOTA	- Multi-object tracking accuracy in [0,100]
@@ -111,7 +143,7 @@ class trackingEvaluation(object):
         self.corrected_version = corrected_version
         self.gt_path           = os.path.join(gt_path, "label_02")
 #        self.t_sha             = t_sha
-        self.t_path            = det_path
+        self.t_path            = det_path #file path of folder containing detection files (0000.txt, 0001.txt, etc.)
         self.seq_idx_to_eval   = seq_idx_to_eval
         self.n_gt              = 0
         self.n_gt_trajectories = 0
@@ -150,6 +182,10 @@ class trackingEvaluation(object):
         # is expanded if necessary and reduced in any case
         self.gt_trajectories   = [[] for x in xrange(self.n_sequences)] 
         self.ign_trajectories  = [[] for x in xrange(self.n_sequences)]
+
+        #jdk, create a folder for storing annoted results when evaluating with the old script (correct FP count)
+        if (not self.corrected_version) and (not os.path.exists(self.t_path + "annotated_results")):
+            os.makedirs(self.t_path + "annotated_results")
 
 #    def createEvalDir(self):
 #        """Creates directory to store evaluation results and data for visualization"""
@@ -238,6 +274,13 @@ class trackingEvaluation(object):
                         t_data.score = -1
                     elif len(fields) == 18:
                         t_data.score  = float(fields[17])     # detection score
+                    elif len(fields) == 21:
+                        t_data.score  = float(fields[17])     # detection score                        
+                        self.imprt_weight = float(fields[18]) #importance weight of the particle
+                        #boolean, true if this time instane is the first when this particle has the max importance weight
+                        self.frst_time_max_imprt_wt = fields[19].lower()
+                        self.target_count = int(fields[20]) #the number of targets that are believed to be alive at this time instance
+
                     else:
                         self.mail.msg("file is not in KITTI format")
                         return
@@ -360,6 +403,11 @@ class trackingEvaluation(object):
 #        for seq_idx in range(len(self.groundtruth)):
 #        for seq_idx in [6, 7, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20]:
         for seq_idx in self.seq_idx_to_eval:
+            if not self.corrected_version:
+                cur_annotated_file = self.t_path + "annotated_results/" + ("%04d.txt" % seq_idx)
+                annoted_f = open(cur_annotated_file, 'w')
+                annoted_f.close()
+
             seq_gt           = self.groundtruth[seq_idx]
             seq_dc           = self.dcareas[seq_idx]
             seq_tracker      = self.tracker[seq_idx]
@@ -418,6 +466,15 @@ class trackingEvaluation(object):
                 tmpfn = 0
                 tmpc  = 0
                 this_cost = [-1]*len(g)
+
+                jdk_tmptp = 0 #done
+                jdk_tmpfp = 0 #done
+                jdk_tmpfn = 0 #done
+                jdk_ignored_tmptp = 0 #done              
+                jdk_ignored_tmpfp = 0 #done
+                jdk_ignored_tmpfn = 0 #done
+
+
                 for row,col in association_matrix:
                     # apply gating on boxoverlap
                     c = cost_matrix[row][col]
@@ -440,6 +497,26 @@ class trackingEvaluation(object):
                         self.fn       += 1
                         tmpfn         += 1
 
+                # check for id switches or fragmentations
+                for i,tt in enumerate(this_ids[0]):
+                    if tt in last_ids[0]:
+                        idx = last_ids[0].index(tt)
+                        tid = this_ids[1][i]
+                        lid = last_ids[1][idx]
+                        if tid != lid and lid != -1 and tid != -1:
+                            if g[i].truncation<self.max_truncation:
+                                g[i].id_switch = 1
+                                ids +=1
+                        if tid != lid and lid != -1:
+                            if g[i].truncation < self.max_truncation:
+                                g[i].fragmentation = 1
+                                tmp_frags +=1
+                                fr +=1    
+
+                # save current index
+                last_ids = this_ids
+
+
                 # associate tracker and DontCare areas
                 # ignore tracker in neighboring classes
                 nignoredtracker = 0
@@ -454,6 +531,16 @@ class trackingEvaluation(object):
                             tt.ignored      = True
                             nignoredtracker+= 1
                             break
+                    #jdk
+                    if (not self.corrected_version):
+                        if tt.ignored:
+                            jdk_ignored_tmpfp += 1
+                            write_to_annotated_results(tt, 'ignored_fp', cur_annotated_file)
+                        elif (not tt.valid) and (not tt.ignored):
+                            jdk_tmpfp += 1
+                            write_to_annotated_results(tt, 'fp', cur_annotated_file)
+
+                    #end jdk
 
                 # check for ignored FN/TP (truncation or neighboring object class)
                 ignoredfn  = 0
@@ -470,6 +557,16 @@ class trackingEvaluation(object):
                             seq_ignored[gg.track_id][-1] = True
                             gg.ignored = True
                             ignoredfn += 1
+                        #jdk    
+                        if (not self.corrected_version):
+                            if gg.ignored:
+                                jdk_ignored_tmpfn += 1
+                                write_to_annotated_results(gg, 'ignored_fn', cur_annotated_file) 
+                            else:
+                                jdk_tmpfn += 1
+                                write_to_annotated_results(gg, 'fn', cur_annotated_file) 
+                        #end jdk
+
                     elif gg.tracker>=0:
                         # ignored TP due to truncation
                         if gg.truncation>self.max_truncation:
@@ -481,7 +578,20 @@ class trackingEvaluation(object):
                             seq_ignored[gg.track_id][-1] = True
                             gg.ignored = True
                             nignoredtp += 1
+                        #jdk    
+                        if (not self.corrected_version):
+                            if gg.ignored:
+                                jdk_ignored_tmptp += 1
+                            else:
+                                jdk_tmptp += 1
 
+                            if gg.id_switch:
+                                write_to_annotated_results(gg, 'id_switch', cur_annotated_file) 
+                            elif gg.ignored:
+                                write_to_annotated_results(gg, 'ignored_tp', cur_annotated_file) 
+                            else:
+                                write_to_annotated_results(gg, 'tp', cur_annotated_file)                                 
+                        #end jdk
                 # correct TP by number of ignored TP due to truncation
                 # ignored TP are shown as tracked in visualization
                 tmptp -= nignoredtp
@@ -490,6 +600,7 @@ class trackingEvaluation(object):
                 # false negatives = associated gt bboxes exceding association threshold + non-associated gt bboxes
                 tmpfn   += len(g)-len(association_matrix)-ignoredfn
                 self.fn += len(g)-len(association_matrix)-ignoredfn
+
                 # false positives = tracker bboxes - associated tracker bboxes
                 if self.corrected_version:
                     # mismatches (mme_t)
@@ -499,6 +610,19 @@ class trackingEvaluation(object):
                     # mismatches (mme_t) 
                     tmpfp   += len(t) - tmptp - nignoredtracker - nignoredtp
                     self.fp += len(t) - tmptp - nignoredtracker - nignoredtp
+
+
+                #jdk
+                if (not self.corrected_version):
+                    assert(tmpfn == jdk_tmpfn), (tmpfn, jdk_tmpfn)
+                    assert(tmptp == jdk_tmptp), (tmptp, jdk_tmptp)
+                    assert(tmpfp == jdk_tmpfp), (tmpfp, jdk_tmpfp)
+                    assert(jdk_ignored_tmptp == nignoredtp), (jdk_ignored_tmptp, nignoredtp)
+                    assert(jdk_ignored_tmpfp == nignoredtracker), (jdk_ignored_tmpfp, nignoredtracker)
+                    assert(jdk_ignored_tmpfn == ignoredfn), (jdk_ignored_tmpfn, ignoredfn)
+                    assert(len(g) == jdk_ignored_tmpfn + jdk_ignored_tmptp + jdk_tmptp + jdk_tmpfn)
+                    assert(len(t) == jdk_tmptp + jdk_tmpfp + jdk_ignored_tmptp + jdk_ignored_tmpfp)
+                #end jdk
 
                 # append single distance values
                 self.distance.append(this_cost)
@@ -532,24 +656,7 @@ class trackingEvaluation(object):
                         print len(association_matrix), association_matrix
                         raise NameError("Something went wrong! nTracker is not TP+FP")
 
-                # check for id switches or fragmentations
-                for i,tt in enumerate(this_ids[0]):
-                    if tt in last_ids[0]:
-                        idx = last_ids[0].index(tt)
-                        tid = this_ids[1][i]
-                        lid = last_ids[1][idx]
-                        if tid != lid and lid != -1 and tid != -1:
-                            if g[i].truncation<self.max_truncation:
-                                g[i].id_switch = 1
-                                ids +=1
-                        if tid != lid and lid != -1:
-                            if g[i].truncation < self.max_truncation:
-                                g[i].fragmentation = 1
-                                tmp_frags +=1
-                                fr +=1    
 
-                # save current index
-                last_ids = this_ids
                 # compute MOTP_t
                 MODP_t = 0
                 if tmptp!=0:

@@ -164,7 +164,7 @@ def sample_and_reweight(particle, measurement_lists, \
             measurement_scores[meas_source_index], params)
         cur_assoc_prior = get_assoc_prior(living_target_indices, particle.targets.living_count, len(measurement_lists[meas_source_index]), 
                                measurement_associations[meas_source_index], measurement_scores[meas_source_index], params, meas_source_index)
-
+#        print "meas_source_index =", meas_source_index, "cur_likelihood =", cur_likelihood, "cur_assoc_prior =", cur_assoc_prior
         exact_probability *= cur_likelihood * cur_assoc_prior
 
 
@@ -177,7 +177,7 @@ def sample_and_reweight(particle, measurement_lists, \
 
     imprt_re_weight = exact_probability/proposal_probability
 
-    assert(imprt_re_weight != 0.0), (exact_probability, proposal_probability)
+    assert(imprt_re_weight != 0.0), (exact_probability, proposal_probability, death_prior)
 
     particle.likelihood_DOUBLE_CHECK_ME = exact_probability
 
@@ -417,7 +417,6 @@ def calc_death_prior(living_target_indices, p_target_deaths):
 
     return death_prior
 
-#TAKE params instead of all this stuff!!!!!!
 def get_assoc_prior(living_target_indices, total_target_count, number_measurements, 
              measurement_associations, measurement_scores, params,\
              meas_source_index):
@@ -485,7 +484,7 @@ def get_assoc_prior(living_target_indices, total_target_count, number_measuremen
 
 
     assert(len(measurement_associations) == number_measurements), (number_measurements, len(measurement_associations), measurement_associations)
-    #numnber of targets from the last time instance that are still alive
+    #number of targets from the last time instance that are still alive
     living_target_count = len(living_target_indices)
     #numnber of targets from the last time instance that died
     dead_target_count = total_target_count - living_target_count
@@ -541,6 +540,17 @@ def get_assoc_prior(living_target_indices, total_target_count, number_measuremen
         assoc_prior *= params.target_emission_probs[meas_source_index][i]**(meas_counts_by_score[i]) \
                           *params.birth_probabilities[meas_source_index][i][birth_counts_by_score[i]] \
                           *params.clutter_probabilities[meas_source_index][i][clutter_counts_by_score[i]] \
+
+    #####TESTING
+    meas_orderings = count_meas_orderings(number_measurements, observed_target_count, \
+                                        birth_count, clutter_count)
+
+    for i in range(len(params.score_intervals[meas_source_index])):
+        assert(params.target_emission_probs[meas_source_index][i]**(meas_counts_by_score[i])!=0), params.target_emission_probs[meas_source_index][i]**(meas_counts_by_score[i])
+        assert(params.birth_probabilities[meas_source_index][i][birth_counts_by_score[i]] != 0), (birth_counts_by_score[i], i, params.birth_probabilities[meas_source_index][i])
+        assert(params.clutter_probabilities[meas_source_index][i][clutter_counts_by_score[i]] != 0), (clutter_counts_by_score[i], i, params.clutter_probabilities[meas_source_index][i])
+
+    #####DONE TESTING
 
     return assoc_prior
 
