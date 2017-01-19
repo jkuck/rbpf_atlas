@@ -26,8 +26,8 @@ SKIP_LEARNING_Q = True
 #to cut down on load time
 USE_PICKLED_DATA = True
 PICKELD_DATA_DIRECTORY = "./KITTI_helpers/learn_params1_pickled_data"
-DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
-
+#DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
+DATA_PATH = "./data"
 
 CAMERA_PIXEL_WIDTH = 1242
 CAMERA_PIXEL_HEIGHT = 375
