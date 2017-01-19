@@ -37,6 +37,10 @@ def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets
             sort_dets_on_intervals:
             description_of_run = "mscnn_only_with_score_intervals"
 
+        elif (not include_ignored_gt) and (not include_dontcare_in_gt) and \
+            (not sort_dets_on_intervals):
+            description_of_run = "mscnn_only_no_score_intervals"
+
         elif include_ignored_gt and (not include_dontcare_in_gt) and \
             sort_dets_on_intervals:
             description_of_run = "mscnn_only_with_score_intervals_include_ignored_gt"
@@ -129,24 +133,43 @@ def submit_single_experiment(use_regionlets, use_mscnn, num_particles, include_i
 
 
 if __name__ == "__main__":
-    #mscnn_only_with_score_intervals
-    for num_particles in NUM_PARTICLES_TO_TEST:
-        submit_single_experiment(use_regionlets=False, use_mscnn=True, num_particles=num_particles, 
-                                include_ignored_gt=False, include_dontcare_in_gt=False, 
-                                sort_dets_on_intervals=True)
+#    #mscnn_only_with_score_intervals
+#    for num_particles in NUM_PARTICLES_TO_TEST:
+#        submit_single_experiment(use_regionlets=False, use_mscnn=True, num_particles=num_particles, 
+#                                include_ignored_gt=False, include_dontcare_in_gt=False, 
+#                                sort_dets_on_intervals=True)
     
     #mscnn_and_regionlets_with_score_intervals
     for num_particles in NUM_PARTICLES_TO_TEST:
         submit_single_experiment(use_regionlets=True, use_mscnn=True, num_particles=num_particles, 
                                 include_ignored_gt=False, include_dontcare_in_gt=False, 
                                 sort_dets_on_intervals=True)
+#
+#    #regionlets_only_with_score_intervals
+#    for num_particles in NUM_PARTICLES_TO_TEST:
+#        submit_single_experiment(use_regionlets=True, use_mscnn=False, num_particles=num_particles, 
+#                                include_ignored_gt=False, include_dontcare_in_gt=False, 
+#                                sort_dets_on_intervals=True)
 
-    #regionlets_only_with_score_intervals
+#    #mscnn_only_no_score_intervals
+#    for num_particles in NUM_PARTICLES_TO_TEST:
+#        submit_single_experiment(use_regionlets=False, use_mscnn=True, num_particles=num_particles, 
+#                                include_ignored_gt=False, include_dontcare_in_gt=False, 
+#                                sort_dets_on_intervals=False)
+#    
+    #mscnn_and_regionlets_no_score_intervals
     for num_particles in NUM_PARTICLES_TO_TEST:
-        submit_single_experiment(use_regionlets=True, use_mscnn=False, num_particles=num_particles, 
+        submit_single_experiment(use_regionlets=True, use_mscnn=True, num_particles=num_particles, 
                                 include_ignored_gt=False, include_dontcare_in_gt=False, 
-                                sort_dets_on_intervals=True)
- 
+                                sort_dets_on_intervals=False)
+#
+#    #regionlets_only_no_score_intervals
+#    for num_particles in NUM_PARTICLES_TO_TEST:
+#        submit_single_experiment(use_regionlets=True, use_mscnn=False, num_particles=num_particles, 
+#                                include_ignored_gt=False, include_dontcare_in_gt=False, 
+#                                sort_dets_on_intervals=False)
+
+
 #    #regionlets_only_no_score_intervals
 #    for num_particles in NUM_PARTICLES_TO_TEST:
 #        submit_single_experiment(use_regionlets=True, use_mscnn=False, num_particles=num_particles, 

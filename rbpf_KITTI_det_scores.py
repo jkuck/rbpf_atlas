@@ -87,20 +87,27 @@ if USE_RANDOM_SEED:
 USE_LEARNED_KF_PARAMS = True
 USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
-RUN_ONLINE = False #save online results 
+RUN_ONLINE = True #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 3
+ONLINE_DELAY = 0
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
 #if true only update a target with at most one measurement
 #(i.e. not regionlets and then lsvm)
 MAX_1_MEAS_UPDATE = True
-
+#if true, view measurements as jointly gaussian and update
+#target once per time stamp with combination of associated measurements
+UPDATE_MULT_MEAS_SIMUL = False
 
 RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
 DEBUG = False
+
+#if True, save the current max importance weight, whether this is the particles first time as
+#the max importance weight particle, and the number of living targets along with every
+#line of the results file
+SAVE_EXTRA_INFO = True
 
 USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check USE_CONSTANT_R
 
@@ -306,6 +313,9 @@ class Target:
 
         self.updated_this_time_instance = True
 
+        #used when UPDATE_MULT_MEAS_SIMUL = True
+        self.associated_measurements = []
+
     def near_border(self):
         near_border = False
         x1 = self.x[0][0] - self.width/2.0
@@ -339,6 +349,50 @@ class Target:
     #   updated_self.P = np.dot((np.eye(self.P.shape[0]) - np.dot(K, H)), self.P) #NUMERICALLY UNSTABLE!!!!!!!!
         updated_P = self.P - np.dot(np.dot(K, S), K.T) #not sure if this is numerically stable!!
         return (updated_x, updated_P)
+
+    def update_2meas_simul(self):
+        assert(UPDATE_MULT_MEAS_SIMUL and KF_MOTION)
+        assert(len(self.associated_measurements) == 2)
+        assert(self.associated_measurements[0]['cur_time'] == self.associated_measurements[1]['cur_time'])
+
+        R_inv = inv(JOINT_MEAS_NOISE_COV)
+        R_inv_11 = R_inv[0:2, 0:2]
+        R_inv_12 = R_inv[0:2, 2:4]
+        R_inv_12_T = R_inv[2:4, 0:2]
+        R_inv_22 = R_inv[2:4, 2:4]
+        #double check R_inv_12_T is the transpose of R_inv_12
+        assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+               (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+               (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+               (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+
+        z_1 = self.associated_measurements[0]['meas_loc']
+        z_2 = self.associated_measurements[1]['meas_loc']
+        A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+        b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+        combined_z = np.dot(inv(A), b)
+        combined_R = inv(A)
+
+
+        reformat_combined_z = np.array([[combined_z[0]],
+                                  [combined_z[1]]])
+        assert(self.x.shape == (4, 1))
+
+        (self.x, self.P) = self.kf_update(reformat_meas, combined_R)
+
+        assert(self.x.shape == (4, 1))
+        assert(self.P.shape == (4, 4))
+
+        self.width = self.associated_measurements[0]['width']
+        self.height = self.associated_measurements[0]['height']
+        cur_time = self.associated_measurements[0]['cur_time']
+        assert(self.all_time_stamps[-1] == round(cur_time, 2) and self.all_time_stamps[-2] != round(cur_time, 2))
+        assert(self.x.shape == (4, 1)), (self.x.shape, np.dot(K, residual).shape)
+
+        self.all_states[-1] = (self.x, self.width, self.height)
+        self.updated_this_time_instance = True
+        self.last_measurement_association = cur_time        
+
 
     def update(self, measurement, width, height, cur_time, meas_noise_cov):
         """ Perform update step and replace predicted position for the current time step
@@ -552,6 +606,7 @@ class Target:
                 self.offscreen = False
 
         self.updated_this_time_instance = False
+        self.associated_measurements = []
 
 
 ################### def target_death_prob(self, cur_time, prev_time):
@@ -766,7 +821,14 @@ class TargetSet:
         return every_target
 
 
-    def write_online_results(self, online_results_filename, frame_idx, total_frame_count):
+    def write_online_results(self, online_results_filename, frame_idx, total_frame_count, extra_info):
+        """
+        Inputs:
+        - extra_info: dictionary containing the particle's importance weight (key 'importance_weight') 
+            and boolean whether this is the first time the particle is the max importance weight 
+            particle (key 'first_time_as_max_imprt_part')
+
+        """
         if frame_idx == ONLINE_DELAY:
             f = open(online_results_filename, "w") #write over old results if first frame
         else:
@@ -784,8 +846,13 @@ class TargetSet:
                 top = y_pos - height/2.0
                 right = x_pos + width/2.0
                 bottom = y_pos + height/2.0      
-                f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
-                    (frame_idx, target.id_, left, top, right, bottom))
+                if SAVE_EXTRA_INFO:
+                    f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                        (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                        extra_info['first_time_as_max_imprt_part'], self.living_count))
+                else:
+                    f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
+                        (frame_idx, target.id_, left, top, right, bottom))
 
         else:
             print self.living_targets_q
@@ -804,8 +871,13 @@ class TargetSet:
                 top = y_pos - height/2.0
                 right = x_pos + width/2.0
                 bottom = y_pos + height/2.0      
-                f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
-                    (frame_idx - ONLINE_DELAY, target.id_, left, top, right, bottom))
+                if SAVE_EXTRA_INFO:
+                    f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                        (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                        extra_info['first_time_as_max_imprt_part'], self.living_count))
+                else:
+                    f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
+                        (frame_idx - ONLINE_DELAY, target.id_, left, top, right, bottom))
 
             if frame_idx == total_frame_count - 1:
                 q_idx = 1
@@ -830,8 +902,14 @@ class TargetSet:
                         top = y_pos - height/2.0
                         right = x_pos + width/2.0
                         bottom = y_pos + height/2.0      
-                        f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
-                            (cur_frame_idx, target.id_, left, top, right, bottom))
+                        if SAVE_EXTRA_INFO:
+                            f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                                (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                                extra_info['first_time_as_max_imprt_part'], self.living_count))
+                        else:
+                            f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
+                                (cur_frame_idx, target.id_, left, top, right, bottom))
+
                 for target in self.living_targets:
                     assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                     x_pos = target.all_states[-1][0][0][0]
@@ -843,8 +921,13 @@ class TargetSet:
                     top = y_pos - height/2.0
                     right = x_pos + width/2.0
                     bottom = y_pos + height/2.0      
-                    f.write( "%d %d Car -1 -1 2.57 %d %d %d %d -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
-                        (frame_idx, target.id_, left, top, right, bottom))
+                    if SAVE_EXTRA_INFO:
+                        f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                            (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                            extra_info['first_time_as_max_imprt_part'], self.living_count))
+                    else:
+                        f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
+                            (frame_idx, target.id_, left, top, right, bottom))
 
     def write_targets_to_KITTI_format(self, num_frames, results_filename, plot_filename):
         x_locations_all_targets = defaultdict(list)
@@ -983,13 +1066,38 @@ class Particle:
             elif((meas_assoc >= 0) and (meas_assoc < birth_value)):
                 assert(meas_source_index >= 0 and meas_source_index < len(SCORE_INTERVALS)), (meas_source_index, len(SCORE_INTERVALS), SCORE_INTERVALS)
                 assert(meas_index >= 0 and meas_index < len(measurement_scores)), (meas_index, len(measurement_scores), measurement_scores)
-                if not (MAX_1_MEAS_UPDATE and self.targets.living_targets[meas_assoc].updated_this_time_instance):
+                #store measurement association for update after all measurements have been associated
+                if UPDATE_MULT_MEAS_SIMUL:
+                    score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[meas_index])
+                    cur_meas = {'meas_loc': measurements[meas_index], 'width': widths[meas_index], \
+                                'height': heights[meas_index], 'cur_time': cur_time,
+                                'meas_noise_cov': MEAS_NOISE_COVS[meas_source_index][score_index]}
+                    self.targets.living_targets[meas_assoc].associated_measurements.append(cur_meas)
+                #update the target corresponding to the association we have sampled right now, unless already updated
+                #and we only allow a max of 1 update
+                elif not (MAX_1_MEAS_UPDATE and self.targets.living_targets[meas_assoc].updated_this_time_instance):
                     score_index = get_score_index(SCORE_INTERVALS[meas_source_index], measurement_scores[meas_index])
                     self.targets.living_targets[meas_assoc].update(measurements[meas_index], widths[meas_index], \
                                     heights[meas_index], cur_time, MEAS_NOISE_COVS[meas_source_index][score_index])
             else:
                 #otherwise the measurement was associated with clutter
                 assert(meas_assoc == -1), ("meas_assoc = ", meas_assoc)
+
+    def update_mult_meas_simultaneously():
+        """
+        If UPDATE_MULT_MEAS_SIMUL = True, run this after associating all measurements to update all targets
+        """
+        for target in self.targets.living_targets:
+            if len(target.associated_measurements) == 1:
+                target.update(target.associated_measurements[0]['meas_loc'], target.associated_measurements[0]['width'], \
+                            target.associated_measurements[0]['height'], target.associated_measurements[0]['cur_time'], \
+                            target.associated_measurements[0]['meas_noise_cov'])
+            elif len(target.associated_measurements) == 2:
+                target.update_2meas_simul()
+            else:
+                #not associated with any measurements
+                assert(len(target.associated_measurements) == 0)
+
 
     #@profile
     def update_particle_with_measurement(self, cur_time, measurement_lists, widths, heights, measurement_scores, params):
@@ -1283,12 +1391,16 @@ def run_rbpf_on_targetset(target_sets, online_results_filename, params):
                             cur_target.id_ = target_associations[cur_target.id_]
 
 
-            if time_instance_index >= ONLINE_DELAY:
-                prv_max_weight_particle = cur_max_weight_particle
 
             #write current time step's results to results file
             if time_instance_index >= ONLINE_DELAY:
-                cur_max_weight_target_set.write_online_results(online_results_filename, time_instance_index, number_time_instances)
+                extra_info = {'importance_weight': max_imprt_weight,
+                          'first_time_as_max_imprt_part': prv_max_weight_particle != cur_max_weight_particle}
+                cur_max_weight_target_set.write_online_results(online_results_filename, time_instance_index, number_time_instances,
+                                            extra_info)
+
+            if time_instance_index >= ONLINE_DELAY:
+                prv_max_weight_particle = cur_max_weight_particle
 
 
             if ONLINE_DELAY != 0:
@@ -1635,9 +1747,10 @@ if __name__ == "__main__":
         if sort_dets_on_intervals:
             MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
             REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 20)]
-    #       REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
+#            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
         else:
-            MSCNN_SCORE_INTERVALS = [.5]                                
+#            MSCNN_SCORE_INTERVALS = [.5]                                
+            MSCNN_SCORE_INTERVALS = [.3]                                
             REGIONLETS_SCORE_INTERVALS = [2]
 
 
@@ -1670,7 +1783,7 @@ if __name__ == "__main__":
         elif use_regionlets and use_mscnn:
             SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
             (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
                     get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
                     REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
                     include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
