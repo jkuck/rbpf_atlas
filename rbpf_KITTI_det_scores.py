@@ -87,9 +87,9 @@ if USE_RANDOM_SEED:
 USE_LEARNED_KF_PARAMS = True
 USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
-RUN_ONLINE = True #save online results 
+RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 0
+ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
@@ -115,7 +115,7 @@ USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check U
 default_time_step = .1 
 TIME_SCALED = False
 
-USE_CONSTANT_R = False
+USE_CONSTANT_R = True
 #For testing why score interval for R are slow
 CACHED_LIKELIHOODS = 0
 NOT_CACHED_LIKELIHOODS = 0
@@ -129,8 +129,10 @@ if USE_LEARNED_KF_PARAMS:
                           [0,           0, 5.56278505, 0],
                           [0,           0,           0, 3]])
     
-    R_default = np.array([[ 0.0,   0.0],
-                          [ 0.0,   0.0]])
+#    R_default = np.array([[ 0.0,   0.0],
+#                          [ 0.0,   0.0]])
+    R_default = np.array([[ 0.01,   0.0],
+                          [ 0.0,   0.01]])    
     
     
     #learned from all GT
