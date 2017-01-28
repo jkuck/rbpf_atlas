@@ -15,7 +15,7 @@ import glob
 
 import mailpy
 
-DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
+DATA_PATH = "/Users/jkuck/Classes/cs229/rbpf_atlas/KITTI_helpers/data"
 
 #########################################################################
 # function that does the evaluation
@@ -1033,6 +1033,8 @@ def eval_results(all_run_results, seq_idx_to_eval, use_corrected_eval=True, info
                     all_sequences_completed = False
             if all_sequences_completed:
                 cur_run_metrics = evaluate(cur_run_results + "/", seq_idx_to_eval, corrected_version=use_corrected_eval) # + operator used for string concatenation!
+                print cur_run_metrics
+                print 'hi'
                 orig_metrics_len = len(cur_run_metrics)
                 #append run info, if given, to evaluation metrics
                 if info_by_run:
