@@ -1,6 +1,6 @@
 import os
 
-DIRECTORY_TO_SEARCH = './results/origRBPF_KITTI_DATA_learnedKFparams'
+DIRECTORY_TO_SEARCH = './ICML_prep/newDetections'
 #DIRECTORY_TO_SEARCH = '/Users/jkuck/Classes/cs229/rbpf_atlas/results/results_annotated'
 
 
@@ -16,11 +16,13 @@ def find_and_eval_results(directory_to_search, seq_idx_to_eval=[i for i in range
             print "about to eval: ", directory_to_search
 
             if (not os.path.isfile(directory_to_search + '/OLD_evaluation_metrics.txt')):
+#            if True:
                 command = 'qsub -q atlas -l nodes=1:ppn=1 -v RESULTS_DIR=%s,USE_CORRECTED_EVAL=%s \
                            submit_single_eval_job.sh' % (directory_to_search, False)
                 os.system(command)
 
             if (not os.path.isfile(directory_to_search + '/NEW_evaluation_metrics.txt')):
+#            if True:
                 command = 'qsub -q atlas -l nodes=1:ppn=1 -v RESULTS_DIR=%s,USE_CORRECTED_EVAL=%s \
                            submit_single_eval_job.sh' % (directory_to_search, True)
                 os.system(command)

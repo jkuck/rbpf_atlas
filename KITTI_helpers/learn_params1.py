@@ -26,8 +26,8 @@ SKIP_LEARNING_Q = True
 #to cut down on load time
 USE_PICKLED_DATA = True
 PICKELD_DATA_DIRECTORY = "./KITTI_helpers/learn_params1_pickled_data"
-#DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
-DATA_PATH = "./data"
+DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
+#DATA_PATH = "./data"
 
 CAMERA_PIXEL_WIDTH = 1242
 CAMERA_PIXEL_HEIGHT = 375
@@ -300,6 +300,8 @@ class trackingEvaluation(object):
             Loads detections in KITTI format from textfiles.
         """
         # construct objectDetections object to hold detection data
+        print "hi1, loading_groundtruth =", loading_groundtruth
+        print "root_dir =", root_dir
         t_data  = tData()
         data    = []
         eval_2d = True
@@ -410,6 +412,7 @@ class trackingEvaluation(object):
             f.close()
 
         if not loading_groundtruth:
+            print "hi2!"
             self.tracker=seq_data
             self.n_tr_trajectories=n_trajectories
             self.eval_2d = eval_2d
@@ -2318,6 +2321,103 @@ def get_meas_target_sets_mscnn_and_regionlets(training_sequences, mscnn_score_in
 
     (birth_probabilities_mscnn, birth_probabilities_regionlets) = apply_function_on_intervals_2_det(mscnn_score_intervals, \
         regionlets_score_intervals, multi_detections.get_birth_probabilities_score_range)
+
+    if(doctor_birth_probs):
+        doctor_birth_probabilities(birth_probabilities_mscnn)
+        doctor_birth_probabilities(birth_probabilities_regionlets)
+
+    birth_probabilities = [birth_probabilities_mscnn, birth_probabilities_regionlets]
+    print "HELLO#8"
+
+    (death_probs_near_border, death_counts_near_border, living_counts_near_border) = multi_detections.get_death_probs(near_border = True)
+    (death_probs_not_near_border, death_counts_not_near_border, living_counts_not_near_border) = multi_detections.get_death_probs(near_border = False)
+
+
+    return (returnTargSets, emission_probs, clutter_probs, birth_probabilities, meas_noise_covs, death_probs_near_border, death_probs_not_near_border, joint_meas_noise_cov)
+
+
+def get_meas_target_sets_2sources_general(training_sequences, det1_score_intervals, det2_score_intervals, \
+    det1_name, det2_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+    include_ignored_gt = False, include_dontcare_in_gt = False, include_ignored_detections = True):
+    """
+    Input:
+    - doctor_clutter_probs: if True, replace 0 probabilities with .0000001/float(20+num_zero_probs) and extend
+        clutter probability list with 20 values of .0000001/20 and subtract .0000001 from element 0
+    """
+
+    print "HELLO#1"
+    (measurementTargetSetsBySequence_mscnn, target_emission_probs_mscnn, clutter_probabilities_mscnn, \
+        incorrect_birth_probabilities_mscnn, meas_noise_covs_mscnn) = get_meas_target_set(training_sequences, det1_score_intervals, \
+        det1_name, obj_class, doctor_clutter_probs=doctor_clutter_probs, doctor_birth_probs=doctor_birth_probs, include_ignored_gt=include_ignored_gt, \
+        include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)
+    print "HELLO#2"
+
+    (measurementTargetSetsBySequence_regionlets, target_emission_probs_regionlets, clutter_probabilities_regionlets, \
+        incorrect_birth_probabilities_regionlets, meas_noise_covs_regionlets) = get_meas_target_set(training_sequences, det2_score_intervals, \
+        det2_name, obj_class, doctor_clutter_probs=doctor_clutter_probs, doctor_birth_probs=doctor_birth_probs, include_ignored_gt=include_ignored_gt, \
+        include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)
+    print "HELLO#3"
+
+
+
+    returnTargSets = []
+    assert(len(measurementTargetSetsBySequence_regionlets) == len(measurementTargetSetsBySequence_mscnn))
+    for seq_idx in range(len(measurementTargetSetsBySequence_regionlets)):
+        returnTargSets.append([measurementTargetSetsBySequence_mscnn[seq_idx],\
+                               measurementTargetSetsBySequence_regionlets[seq_idx]])
+    print "HELLO#4"
+
+    emission_probs = [target_emission_probs_mscnn, target_emission_probs_regionlets]
+    clutter_probs = [clutter_probabilities_mscnn, clutter_probabilities_regionlets]
+    meas_noise_covs = [meas_noise_covs_mscnn, meas_noise_covs_regionlets]
+    print "HELLO#5"
+
+    mail = mailpy.Mail("") #this is silly and could be cleaned up
+    (gt_objects, mscnn_det_objects) = evaluate(min_score=det1_score_intervals[0], \
+        det_method=det1_name, mail=mail, obj_class=obj_class, include_ignored_gt=include_ignored_gt,\
+        include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)
+    print "HELLO#6"
+
+    (gt_objects, regionlets_det_objects) = evaluate(min_score=det2_score_intervals[0], \
+        det_method=det2_name, mail=mail, obj_class=obj_class, include_ignored_gt=include_ignored_gt,\
+        include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)
+    multi_detections = MultiDetections(gt_objects, mscnn_det_objects, regionlets_det_objects, training_sequences)
+    print "HELLO#7"
+
+##############################################################################
+    #calculate the joint measurement noise covariance between det1_name and det2_name detections
+    meas_errors = []
+    multi_det_count = 0
+    det_counts = [0,0,0]
+    for seq_idx in training_sequences:
+        for frame_idx in range(len(multi_detections.gt_objects[seq_idx])):
+            for gt_obj in multi_detections.gt_objects[seq_idx][frame_idx]:
+#                print type(gt_obj)
+#                print gt_obj
+#                print type(gt_obj[0])
+#                print gt_obj[0]
+                if(gt_obj.associated_detection):
+                    num_det = len(gt_obj.associated_detection)
+                else:    
+                    num_det = 0
+                assert(num_det in [0, 1, 2]), (num_det, gt_obj.associated_detection)
+                det_counts[num_det] += 1
+                if(num_det == 2):
+                    cur_meas_error = np.array([gt_obj.x - gt_obj.associated_detection[0].x, 
+                                            gt_obj.y - gt_obj.associated_detection[0].y,
+                                            gt_obj.x - gt_obj.associated_detection[1].x, 
+                                            gt_obj.y - gt_obj.associated_detection[1].y])
+#                                            gt_obj.x - (gt_obj.associated_detection[1].x + gt_obj.associated_detection[0].x)/2.0, 
+#                                            gt_obj.y - (gt_obj.associated_detection[1].y + gt_obj.associated_detection[0].y)/2.0])
+                    meas_errors.append(cur_meas_error)
+                    multi_det_count += 1
+    joint_meas_noise_cov = np.cov(np.asarray(meas_errors).T)
+
+
+##############################################################################
+
+    (birth_probabilities_mscnn, birth_probabilities_regionlets) = apply_function_on_intervals_2_det(det1_score_intervals, \
+        det2_score_intervals, multi_detections.get_birth_probabilities_score_range)
 
     if(doctor_birth_probs):
         doctor_birth_probabilities(birth_probabilities_mscnn)

@@ -36,6 +36,7 @@ from learn_params1 import get_meas_target_sets_lsvm_and_regionlets
 from learn_params1 import get_meas_target_sets_regionlets_general_format
 from learn_params1 import get_meas_target_sets_mscnn_general_format
 from learn_params1 import get_meas_target_sets_mscnn_and_regionlets
+from learn_params1 import get_meas_target_sets_2sources_general
 
 from jdk_helper_evaluate_results import eval_results
 import cProfile
@@ -1658,8 +1659,8 @@ if __name__ == "__main__":
     
     # check for correct number of arguments. if user_sha and email are not supplied,
     # no notification email is sent (this option is used for auto-updates)
-    if len(sys.argv)!=10:
-        print "Supply 9 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
+    if len(sys.argv)!=11:
+        print "Supply 10 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
         print "use_regionlets(bool) use_mscnn(bool) sort_dets_on_intervals (bool), run_idx, total_runs, seq_idx"
         print "received ", len(sys.argv), " arguments"
         for i in range(len(sys.argv)):
@@ -1667,9 +1668,9 @@ if __name__ == "__main__":
         sys.exit(1);
 
     N_PARTICLES = int(sys.argv[1])
-    run_idx = int(sys.argv[7]) #the index of this run
-    total_runs = int(sys.argv[8]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
-    seq_idx = int(sys.argv[9]) #the index of the sequence to process
+    run_idx = int(sys.argv[8]) #the index of this run
+    total_runs = int(sys.argv[9]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
+    seq_idx = int(sys.argv[10]) #the index of the sequence to process
 
     #########################
     # LSTM initialization
@@ -1692,7 +1693,7 @@ if __name__ == "__main__":
       scaler = pickle.load(handle)
     #########################
 
-    for i in range(2,6):
+    for i in range(2,5):
         if(sys.argv[i] != 'True' and sys.argv[i] != 'False'):
             print "Booleans must be supplied as 'True' or 'False' (without quotes)"
             sys.exit(1);
@@ -1702,11 +1703,12 @@ if __name__ == "__main__":
     include_ignored_gt = (sys.argv[2] == 'True')
     include_dontcare_in_gt = (sys.argv[3] == 'True')
     use_regionlets = (sys.argv[4] == 'True')
-    use_mscnn = (sys.argv[5] == 'True')
-    sort_dets_on_intervals = (sys.argv[6] == 'True')
+    det1_name = sys.argv[5]
+    det2_name = sys.argv[6]
+    sort_dets_on_intervals = (sys.argv[7] == 'True')
 
     DESCRIPTION_OF_RUN = get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
-                            sort_dets_on_intervals, use_regionlets, use_mscnn)
+                            sort_dets_on_intervals, use_regionlets, det1_name, det2_name)
 
     results_folder_name = '%s/%d_particles' % (DESCRIPTION_OF_RUN, N_PARTICLES)
 #   results_folder = '%s/rbpf_KITTI_results_par_exec_trainAllButCurSeq_10runs_dup3/%s' % (DIRECTORY_OF_ALL_RESULTS, results_folder_name)
@@ -1749,51 +1751,60 @@ if __name__ == "__main__":
         if sort_dets_on_intervals:
             MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
             REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 20)]
+            det2_score_intervals = [float(i)*.1 for i in range(0,10)]            
 #            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
         else:
 #            MSCNN_SCORE_INTERVALS = [.5]                                
             MSCNN_SCORE_INTERVALS = [.3]                                
             REGIONLETS_SCORE_INTERVALS = [2]
-
+            det2_score_intervals = [.0]
 
         #train on all training sequences, except the current sequence we are testing on
         training_sequences = [i for i in [i for i in range(21)] if i != seq_idx]
         #training_sequences = [i for i in SEQUENCES_TO_PROCESS if i != seq_idx]
         #training_sequences = [0]
 
-        #only use regionlets detections
-        if use_regionlets and (not use_mscnn):
-            SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-                get_meas_target_sets_regionlets_general_format(training_sequences, REGIONLETS_SCORE_INTERVALS, \
-                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+#        #only use regionlets detections
+#        if use_regionlets and (not use_mscnn):
+#            SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+#                get_meas_target_sets_regionlets_general_format(training_sequences, REGIONLETS_SCORE_INTERVALS, \
+#                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+#                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                include_ignored_detections = include_ignored_detections)
+#
+#        #only use mscnn detections
+#        elif (not use_regionlets) and use_mscnn:
+#            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+#                get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
+#                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+#                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                include_ignored_detections = include_ignored_detections)
+#
+#        #use mscnn and regionlets detections
+#        elif use_regionlets and use_mscnn:
+#            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
+#                    get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
+#                    REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+#                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                    include_ignored_detections = include_ignored_detections)
+#        else:
+#            print "Unexpected combination of detections"
+#            sys.exit(1);        
+
+        SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, det2_score_intervals]
+        (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+            MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
+                get_meas_target_sets_2sources_general(training_sequences, MSCNN_SCORE_INTERVALS, \
+                det2_score_intervals, det1_name, det2_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
                 include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
                 include_ignored_detections = include_ignored_detections)
 
-        #only use mscnn detections
-        elif (not use_regionlets) and use_mscnn:
-            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-                get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
-                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
-                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                include_ignored_detections = include_ignored_detections)
-
-        #use mscnn and regionlets detections
-        elif use_regionlets and use_mscnn:
-            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
-                    get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
-                    REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
-                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                    include_ignored_detections = include_ignored_detections)
-
-        else:
-            print "Unexpected combination of detections"
-            sys.exit(1);        
 
         params = Parameters(TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES,\
                  BIRTH_PROBABILITIES, MEAS_NOISE_COVS, R_default, H,\

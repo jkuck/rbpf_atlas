@@ -15,7 +15,7 @@ import glob
 
 import mailpy
 
-DATA_PATH = "/Users/jkuck/rotation3/atlas/rbpf_target_tracking/KITTI_helpers/data"
+DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 #########################################################################
 # function that does the evaluation
