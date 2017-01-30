@@ -37,6 +37,7 @@ from learn_params1 import get_meas_target_sets_regionlets_general_format
 from learn_params1 import get_meas_target_sets_mscnn_general_format
 from learn_params1 import get_meas_target_sets_mscnn_and_regionlets
 from learn_params1 import get_meas_target_sets_2sources_general
+from learn_params1 import get_meas_target_sets_1sources_general
 
 from jdk_helper_evaluate_results import eval_results
 import cProfile
@@ -99,7 +100,12 @@ FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False
 MAX_1_MEAS_UPDATE = True
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
-UPDATE_MULT_MEAS_SIMUL = False
+UPDATE_MULT_MEAS_SIMUL = True
+#for debugging, zero out covariance between measurement sources when
+#UPDATE_MULT_MEAS_SIMUL=True, should be the same result as sequential updates
+TREAT_MEAS_INDEP = True
+#for debugging, actually do 2 sequential updates, but after all associations
+TREAT_MEAS_INDEP_2 = True
 
 RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
@@ -358,30 +364,47 @@ class Target:
         assert(len(self.associated_measurements) == 2)
         assert(self.associated_measurements[0]['cur_time'] == self.associated_measurements[1]['cur_time'])
 
-        R_inv = inv(JOINT_MEAS_NOISE_COV)
-        R_inv_11 = R_inv[0:2, 0:2]
-        R_inv_12 = R_inv[0:2, 2:4]
-        R_inv_12_T = R_inv[2:4, 0:2]
-        R_inv_22 = R_inv[2:4, 2:4]
-        #double check R_inv_12_T is the transpose of R_inv_12
-        assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
-               (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
-               (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
-               (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+        if TREAT_MEAS_INDEP:
+            JOINT_MEAS_NOISE_COV[0:2, 2:4] = np.array([[0,0],[0,0]])
+            JOINT_MEAS_NOISE_COV[2:4, 0:2] = np.array([[0,0],[0,0]])
+        if TREAT_MEAS_INDEP_2:
+            reformat_meas1 = np.array([[self.associated_measurements[0]['meas_loc'][0]],
+                                      [self.associated_measurements[0]['meas_loc'][1]]])            
+            (self.x, self.P) = self.kf_update(reformat_meas1, JOINT_MEAS_NOISE_COV[0:2, 0:2])
 
-        z_1 = self.associated_measurements[0]['meas_loc']
-        z_2 = self.associated_measurements[1]['meas_loc']
-        A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
-        b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
-        combined_z = np.dot(inv(A), b)
-        combined_R = inv(A)
+            reformat_meas2 = np.array([[self.associated_measurements[1]['meas_loc'][0]],
+                                      [self.associated_measurements[1]['meas_loc'][1]]])            
+            (self.x, self.P) = self.kf_update(reformat_meas2, JOINT_MEAS_NOISE_COV[2:4, 2:4])
+
+        else:    
+            R_inv = inv(JOINT_MEAS_NOISE_COV)
+            R_inv_11 = R_inv[0:2, 0:2]
+            R_inv_12 = R_inv[0:2, 2:4]
+            R_inv_12_T = R_inv[2:4, 0:2]
+            R_inv_22 = R_inv[2:4, 2:4]
+            #double check R_inv_12_T is the transpose of R_inv_12
+            assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+                   (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+                   (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+                   (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+
+            z_1 = self.associated_measurements[0]['meas_loc']
+            z_2 = self.associated_measurements[1]['meas_loc']
+#            print z_1.shape
+#            print z_2.shape
+#            sleep(4)
+            A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+            b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+            combined_z = np.dot(inv(A), b)
+            combined_R = inv(A)
 
 
-        reformat_combined_z = np.array([[combined_z[0]],
-                                  [combined_z[1]]])
-        assert(self.x.shape == (4, 1))
+            reformat_combined_z = np.array([[combined_z[0]],
+                                      [combined_z[1]]])
+            assert(self.x.shape == (4, 1))
 
-        (self.x, self.P) = self.kf_update(reformat_meas, combined_R)
+    #        (self.x, self.P) = self.kf_update(reformat_meas, combined_R)
+            (self.x, self.P) = self.kf_update(reformat_combined_z, combined_R)
 
         assert(self.x.shape == (4, 1))
         assert(self.P.shape == (4, 4))
@@ -1705,6 +1728,8 @@ if __name__ == "__main__":
     use_regionlets = (sys.argv[4] == 'True')
     det1_name = sys.argv[5]
     det2_name = sys.argv[6]
+    if(det2_name == 'None'):
+        det2_name = None
     sort_dets_on_intervals = (sys.argv[7] == 'True')
 
     DESCRIPTION_OF_RUN = get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
@@ -1749,15 +1774,21 @@ if __name__ == "__main__":
         include_ignored_detections = True 
 
         if sort_dets_on_intervals:
-            MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
-            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 20)]
-            det2_score_intervals = [float(i)*.1 for i in range(0,10)]            
-#            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
+            score_interval_dict = {\
+                'mscnn' : [float(i)*.1 for i in range(3,10)],              
+                'regionlets' : [i for i in range(2, 20)],
+                '3dop' : [float(i)*.1 for i in range(1,10)],            
+                'mono3d' : [float(i)*.1 for i in range(1,10)],            
+                'mv3d' : [float(i)*.1 for i in range(1,10)]}        
+#            'regionlets' = [i for i in range(2, 16)]
         else:
-#            MSCNN_SCORE_INTERVALS = [.5]                                
-            MSCNN_SCORE_INTERVALS = [.3]                                
-            REGIONLETS_SCORE_INTERVALS = [2]
-            det2_score_intervals = [.0]
+            score_interval_dict = {\
+#            'mscnn' = [.5],                                
+            'mscnn' : [.3],                                
+            'regionlets' : [2],
+            '3dop' : [.1],
+            'mono3d' : [.1],
+            'mv3d' : [.1]}
 
         #train on all training sequences, except the current sequence we are testing on
         training_sequences = [i for i in [i for i in range(21)] if i != seq_idx]
@@ -1797,13 +1828,26 @@ if __name__ == "__main__":
 #            print "Unexpected combination of detections"
 #            sys.exit(1);        
 
-        SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, det2_score_intervals]
-        (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-            MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
-                get_meas_target_sets_2sources_general(training_sequences, MSCNN_SCORE_INTERVALS, \
-                det2_score_intervals, det1_name, det2_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
-                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                include_ignored_detections = include_ignored_detections)
+        det1_score_intervals = score_interval_dict[det1_name]
+        if det2_name:
+            det2_score_intervals = score_interval_dict[det2_name]
+            SCORE_INTERVALS = [det1_score_intervals, det2_score_intervals]
+            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
+                    get_meas_target_sets_2sources_general(training_sequences, det1_score_intervals, \
+                    det2_score_intervals, det1_name, det2_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+                    include_ignored_detections = include_ignored_detections)
+
+        else:
+            SCORE_INTERVALS = [det1_score_intervals]
+            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+                    get_meas_target_sets_1sources_general(training_sequences, det1_score_intervals, \
+                    det1_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+                    include_ignored_detections = include_ignored_detections)            
+
 
 
         params = Parameters(TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES,\

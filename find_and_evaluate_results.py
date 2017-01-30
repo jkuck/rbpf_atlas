@@ -1,6 +1,6 @@
 import os
 
-DIRECTORY_TO_SEARCH = './ICML_prep/newDetections'
+DIRECTORY_TO_SEARCH = './ICML_prep'
 #DIRECTORY_TO_SEARCH = '/Users/jkuck/Classes/cs229/rbpf_atlas/results/results_annotated'
 
 
