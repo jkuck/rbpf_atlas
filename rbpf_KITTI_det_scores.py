@@ -1777,18 +1777,18 @@ if __name__ == "__main__":
             score_interval_dict = {\
                 'mscnn' : [float(i)*.1 for i in range(3,10)],              
                 'regionlets' : [i for i in range(2, 20)],
-                '3dop' : [float(i)*.1 for i in range(1,10)],            
-                'mono3d' : [float(i)*.1 for i in range(1,10)],            
-                'mv3d' : [float(i)*.1 for i in range(1,10)]}        
+                '3dop' : [float(i)*.1 for i in range(0,10)],            
+                'mono3d' : [float(i)*.1 for i in range(0,10)],            
+                'mv3d' : [float(i)*.1 for i in range(0,10)]}        
 #            'regionlets' = [i for i in range(2, 16)]
         else:
             score_interval_dict = {\
 #            'mscnn' = [.5],                                
             'mscnn' : [.3],                                
             'regionlets' : [2],
-            '3dop' : [.1],
-            'mono3d' : [.1],
-            'mv3d' : [.1]}
+            '3dop' : [.0],
+            'mono3d' : [.0],
+            'mv3d' : [.0]}
 
         #train on all training sequences, except the current sequence we are testing on
         training_sequences = [i for i in [i for i in range(21)] if i != seq_idx]

@@ -4,9 +4,9 @@ import errno
 import sys
 
 NUM_RUNS=1
-#SEQUENCES_TO_PROCESS = [i for i in range(21)]
+SEQUENCES_TO_PROCESS = [i for i in range(21)]
 #SEQUENCES_TO_PROCESS = [11]
-SEQUENCES_TO_PROCESS = [13]
+#SEQUENCES_TO_PROCESS = [13]
 #NUM_PARTICLES_TO_TEST = [25, 100]
 NUM_PARTICLES_TO_TEST = [100]
 #DIRECTORY_OF_ALL_RESULTS = './ICML_prep/multiple_measurements_2seqUpdatesAfterAllAssociationsCompleted'
@@ -16,7 +16,7 @@ DIRECTORY_OF_ALL_RESULTS = './ICML_prep/single_measSrc'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
 
 
-CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_max1MeasUpdate_online3frameDelay_newDetMinScore.1'
+CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_max1MeasUpdate_online3frameDelay_newDetMinScore.0'
 #CUR_EXPERIMENT_BATCH_NAME = 'measuredR_1xQ_max1MeasUpdate_online3frameDelay'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets_on_intervals,
@@ -171,7 +171,8 @@ if __name__ == "__main__":
 
 
     for num_particles in NUM_PARTICLES_TO_TEST:
-        for det1_name in ['3dop', 'mono3d', 'mv3d', 'mscnn', 'regionlets']:
+#        for det1_name in ['3dop', 'mono3d', 'mv3d', 'mscnn', 'regionlets']:
+        for det1_name in ['3dop', 'mono3d', 'mv3d']:
             submit_single_experiment(use_regionlets=False, det1_name = det1_name, det2_name = 'None', num_particles=num_particles, 
                                 include_ignored_gt=False, include_dontcare_in_gt=False, 
                                 sort_dets_on_intervals=True)
