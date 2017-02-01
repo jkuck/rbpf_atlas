@@ -81,7 +81,7 @@ PROFILE = False
 USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
-#PLOT_TARGET_LOCATIONS = True
+PLOT_TARGET_LOCATIONS = False
 if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
@@ -89,7 +89,7 @@ if USE_RANDOM_SEED:
 USE_LEARNED_KF_PARAMS = True
 USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
-RUN_ONLINE = False #save online results 
+RUN_ONLINE = True #save online results 
 #near online mode wait this many frames before picking max weight particle 
 ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
@@ -97,15 +97,15 @@ ONLINE_DELAY = 3
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
 #if true only update a target with at most one measurement
 #(i.e. not regionlets and then lsvm)
-MAX_1_MEAS_UPDATE = True
+MAX_1_MEAS_UPDATE = False
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
 UPDATE_MULT_MEAS_SIMUL = True
 #for debugging, zero out covariance between measurement sources when
 #UPDATE_MULT_MEAS_SIMUL=True, should be the same result as sequential updates
-TREAT_MEAS_INDEP = True
+TREAT_MEAS_INDEP = False
 #for debugging, actually do 2 sequential updates, but after all associations
-TREAT_MEAS_INDEP_2 = True
+TREAT_MEAS_INDEP_2 = False
 
 RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
@@ -1109,7 +1109,7 @@ class Particle:
                 #otherwise the measurement was associated with clutter
                 assert(meas_assoc == -1), ("meas_assoc = ", meas_assoc)
 
-    def update_mult_meas_simultaneously():
+    def update_mult_meas_simultaneously(self):
         """
         If UPDATE_MULT_MEAS_SIMUL = True, run this after associating all measurements to update all targets
         """
@@ -1162,7 +1162,8 @@ class Particle:
             self.process_meas_assoc(birth_value, meas_source_index, measurement_associations[meas_source_index], \
                 measurement_lists[meas_source_index], widths[meas_source_index], heights[meas_source_index], \
                 measurement_scores[meas_source_index], cur_time)
-
+        if UPDATE_MULT_MEAS_SIMUL:
+            self.update_mult_meas_simultaneously()
 
         #process target deaths
         #double check dead_target_indices is sorted
@@ -1777,18 +1778,18 @@ if __name__ == "__main__":
             score_interval_dict = {\
                 'mscnn' : [float(i)*.1 for i in range(3,10)],              
                 'regionlets' : [i for i in range(2, 20)],
-                '3dop' : [float(i)*.1 for i in range(0,10)],            
-                'mono3d' : [float(i)*.1 for i in range(0,10)],            
-                'mv3d' : [float(i)*.1 for i in range(0,10)]}        
+                '3dop' : [float(i)*.1 for i in range(2,10)],            
+                'mono3d' : [float(i)*.1 for i in range(2,10)],            
+                'mv3d' : [float(i)*.1 for i in range(2,10)]}        
 #            'regionlets' = [i for i in range(2, 16)]
         else:
             score_interval_dict = {\
 #            'mscnn' = [.5],                                
             'mscnn' : [.3],                                
             'regionlets' : [2],
-            '3dop' : [.0],
-            'mono3d' : [.0],
-            'mv3d' : [.0]}
+            '3dop' : [.2],
+            'mono3d' : [.2],
+            'mv3d' : [.2]}
 
         #train on all training sequences, except the current sequence we are testing on
         training_sequences = [i for i in [i for i in range(21)] if i != seq_idx]

@@ -5,7 +5,8 @@ import random
 import math
 
 
-
+CHECK_K_NEAREST_TARGETS = True
+K_NEAREST_TARGETS = 1
 
 class Parameters:
     def __init__(self, target_emission_probs, clutter_probabilities,\
@@ -253,7 +254,6 @@ def sample_meas_assoc_and_death(particle, measurement_lists, total_target_count,
     return (targets_to_kill, measurement_associations, proposal_probability, unassociated_target_death_probs)
 
 
-
 def associate_measurements_sequentially(particle, meas_source_index, measurement_list, total_target_count, \
     p_target_deaths, measurement_scores, params):
 
@@ -292,12 +292,48 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 
         return remaining_meas_count
 
+
+    def get_k_nearest_targets(measurement, k):
+        """
+        Inputs:
+        - measurement: the measurement
+        - k: integer, number of nearest targets to return
+
+        Output:
+        - k_nearest_target_indices: list of indices of the k nearest (L2 distance between 
+            bounding box centers) targets in the living target list
+        """
+
+        k_nearest_target_indices = []
+        k_nearest_target_dists = []
+        for target_index in range(total_target_count):
+            target = particle.targets.living_targets[target_index]            
+            target_location = np.squeeze(np.dot(params.H, target.x))
+            distance = (measurement[0] - target_location[0])**2 + (measurement[1] - target_location[1])**2
+            if len(k_nearest_target_indices) < k: #add target
+                k_nearest_target_indices.append(target_index)
+                k_nearest_target_dists.append(distance)
+            elif distance < max(k_nearest_target_dists):
+                target_idx_to_replace = k_nearest_target_dists.index(max(k_nearest_target_dists))
+                k_nearest_target_indices[target_idx_to_replace] = target_index
+                k_nearest_target_dists[target_idx_to_replace] = distance
+
+        return k_nearest_target_indices
+
+
     for (index, cur_meas) in enumerate(measurement_list):
         meas_score = measurement_scores[index]
         #create proposal distribution for the current measurement
         #compute target association proposal probabilities
         proposal_distribution_list = []
-        for target_index in range(total_target_count):
+
+        if CHECK_K_NEAREST_TARGETS:
+            targets_to_check = get_k_nearest_targets(cur_meas, K_NEAREST_TARGETS)
+        else:
+            targets_to_check = [i for i in range(total_target_count)]
+
+#        for target_index in range(total_target_count):
+        for target_index in targets_to_check:
             cur_target_likelihood = memoized_assoc_likelihood(particle, cur_meas, meas_source_index, target_index, params, meas_score)
             targ_likelihoods_summed_over_meas = 0.0
 
@@ -349,21 +385,41 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 
 
         proposal_distribution /= float(np.sum(proposal_distribution))
-        assert(len(proposal_distribution) == total_target_count+2)
+        if CHECK_K_NEAREST_TARGETS:
+            proposal_length = min(K_NEAREST_TARGETS+2, total_target_count+2)
+            assert(len(proposal_distribution) == proposal_length), (proposal_length, len(proposal_distribution))
+
+        else:
+            assert(len(proposal_distribution) == total_target_count+2), len(proposal_distribution)
 
 
         sampled_assoc_idx = np.random.choice(len(proposal_distribution),
                                                 p=proposal_distribution)
 
+        if CHECK_K_NEAREST_TARGETS:
+            possible_target_assoc_count = min(K_NEAREST_TARGETS, total_target_count)
+            if(sampled_assoc_idx <= possible_target_assoc_count): #target or birth association
+                if(sampled_assoc_idx == possible_target_assoc_count): #birth
+                    birth_count[params.get_score_index(meas_score, meas_source_index)] += 1
+                    list_of_measurement_associations.append(total_target_count)
+                else: #target
+                    list_of_measurement_associations.append(targets_to_check[sampled_assoc_idx])
 
-        if(sampled_assoc_idx <= total_target_count): #target or birth association
-            list_of_measurement_associations.append(sampled_assoc_idx)
-            if(sampled_assoc_idx == total_target_count):
-                birth_count[params.get_score_index(meas_score, meas_source_index)] += 1
-        else: #clutter association
-            assert(sampled_assoc_idx == total_target_count+1)
-            list_of_measurement_associations.append(-1)
-            clutter_count[params.get_score_index(meas_score, meas_source_index)] += 1
+            else: #clutter association
+                assert(sampled_assoc_idx == possible_target_assoc_count+1)
+                list_of_measurement_associations.append(-1)
+                clutter_count[params.get_score_index(meas_score, meas_source_index)] += 1
+
+        else: #we considered association with all targets
+            if(sampled_assoc_idx <= total_target_count): #target or birth association
+                list_of_measurement_associations.append(sampled_assoc_idx)
+                if(sampled_assoc_idx == total_target_count):
+                    birth_count[params.get_score_index(meas_score, meas_source_index)] += 1
+            else: #clutter association
+                assert(sampled_assoc_idx == total_target_count+1)
+                list_of_measurement_associations.append(-1)
+                clutter_count[params.get_score_index(meas_score, meas_source_index)] += 1
+
         proposal_probability *= proposal_distribution[sampled_assoc_idx]
 
         remaining_meas_count -= 1
