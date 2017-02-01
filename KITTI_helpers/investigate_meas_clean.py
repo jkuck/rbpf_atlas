@@ -11,6 +11,9 @@ import os.path
 from munkres import Munkres
 from collections import defaultdict
 from numpy.linalg import inv
+from sets import Set
+from sets import ImmutableSet
+
 #try:
 #    from ordereddict import OrderedDict # can be installed using pip
 #except:
@@ -104,12 +107,14 @@ class gtObject:
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
+        self.width = self.x2 - self.x1
+        self.height = self.y2 - self.y1
 
         #id of the track this object belongs to
         self.track_id = track_id
 
         #dictionary of all associated detections
-        #assoc_dets['det_name'] is the the detection of type 'det_name' associated
+        #assoc_dets['det_name'] is the detection of type 'det_name' associated
         #with this ground truth object
         self.assoc_dets = {}
 
@@ -134,7 +139,7 @@ class detObject:
         - y1: upper edge of bounding box (smaller value)
         - y2: lower edge of bounding box  (larger value)
         """
-        assert(x2 > x1 and y2 > y1)
+        assert(x2 > x1 and y2 > y1), (x1, x2, y1, y2)
         self.x = float(x1+x2)/2.0 #x-coord of bounding box center
         self.y = float(y1+y2)/2.0 #y-coord of bounding box center
 
@@ -142,6 +147,8 @@ class detObject:
         self.y1 = y1
         self.x2 = x2
         self.y2 = y2
+        self.width = self.x2 - self.x1
+        self.height = self.y2 - self.y1
 
         # _id of the ground truth track this detection is associated with
         # --OR--
@@ -2818,6 +2825,62 @@ def get_mutual_info(clutter_probabilities1, clutter_probabilities2, clutter_prob
 
     return(mi, e1, e2)
 
+
+def combine_arbitrary_number_measurements_4d(blocked_cov_inv, meas_noise_mean, gt_obj):
+    """
+    
+    Inputs:
+    - blocked_cov_inv: dictionary containing the inverse of the measurement noise covariance matrix, between
+    all measurement source
+
+    [sigma_11    sigma_1j     sigma_1n]
+    [.       .                        ]
+    [.          .                     ]
+    [.             .                  ]
+    [sigma_i1    sigma_ij     sigma_in]
+    [.                 .              ]
+    [.                    .           ]
+    [.                       .        ]
+    [sigma_n1    sigma_nj     sigma_nn]
+    
+    Where there are n measurement sources and sigma_ij represents the block of the INVERSE of the noise covariance
+    corresponding to the ith blocked row and the jth blocked column.  To access sigma_ij, call 
+    blocked_cov_inv[('meas_namei','meas_namej')] where 'meas_namei' is the string representation of the name of
+    measurement source i.
+
+    -meas_noise_mean: a dictionary where meas_noise_mean['meas_namei'] = the mean measurement noise for measurement
+    source with name 'meas_namei'
+
+    -gt_obj: the ground truth object whose associated measurements will be combined, can have an arbitrary number
+    of associations
+
+    """
+    meas_count = len(gt_obj.assoc_dets) #number of associated measurements
+
+    #dictionary containing all measurements in appropriately formatted numpy arrays
+    reformatted_zs = {}
+    for det_name, det in gt_obj.assoc_dets.iteritems():
+        cur_z = np.array([det.x - meas_noise_mean[det_name][0], 
+                          det.y - meas_noise_mean[det_name][1],
+                          det.width - meas_noise_mean[det_name][2],
+                          det.height - meas_noise_mean[det_name][3]])
+        reformatted_zs[det_name] = cur_z
+
+    A = 0
+    b = 0
+    for det_name1, det in reformatted_zs.iteritems():
+        for det_name2, ignore_me_det in gt_obj.assoc_dets.iteritems():
+            A += blocked_cov_inv[(det_name1, det_name2)]
+            b += np.dot(det, blocked_cov_inv[(det_name1, det_name2)])
+
+    combined_meas_mean = np.dot(inv(A), b)
+    combined_covariance = inv(A)
+
+    assert(combined_meas_mean.shape == (4,)), (meas_count, gt_obj.assoc_dets)
+    return (combined_meas_mean, combined_covariance)
+
+
+
 #Moved to returning dictionaries indexed by measurement type rather than lists
 #need to change wherever this is being used
 def get_meas_target_sets(training_sequences, score_intervals, detection_names, \
@@ -2885,9 +2948,6 @@ def get_meas_target_sets(training_sequences, score_intervals, detection_names, \
     print "Constructed all_det_objects"
 
 
-    #FIX ME!! for more than two detection types
-#    multi_detections = MultiDetections_2(gt_objects, all_det_objects[detection_names[0]], 
-#                                       all_det_objects[detection_names[1]], training_sequences)
 
     for gt_seq in gt_objects:
         for gt_frame in gt_seq:
@@ -2908,106 +2968,273 @@ def get_meas_target_sets(training_sequences, score_intervals, detection_names, \
     print gt_association_probs
     print "gt_association_counts:"
     print gt_association_counts
-    sleep(1)
+#    sleep(1)
     print "HELLO#7"
 ##############################################################################
-    (p_det1clutter_assoc, p_det2clutter_assoc) = multi_detections.get_prob_clutter_assoc()
-    print "probability that clutter from detection source 1 is associated from clutter from detection source 2 =", p_det1clutter_assoc
-    print "probability that clutter from detection source 2 is associated from clutter from detection source 1 =", p_det2clutter_assoc
+    #FIX ME!! for more than two detection types
+    if len(detection_names) == 2:
+        multi_detections = MultiDetections_2(gt_objects, all_det_objects[detection_names[0]], 
+                                           all_det_objects[detection_names[1]], training_sequences)
+
+        (p_det1clutter_assoc, p_det2clutter_assoc) = multi_detections.get_prob_clutter_assoc()
+        print "probability that clutter from detection source 1 is associated from clutter from detection source 2 =", p_det1clutter_assoc
+        print "probability that clutter from detection source 2 is associated from clutter from detection source 1 =", p_det2clutter_assoc
 
 
-    print "Original clutter probabilities:"
-    print clutter_probabilities
+        print "Original clutter probabilities:"
+        print clutter_probabilities
 
-    (clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint) = multi_detections.get_joint_clutter_probs()
-    print "clutter_probabilities1:"
-    print clutter_probabilities1
-    print "clutter_probabilities2"
-    print clutter_probabilities2
-    print "clutter_probabilities_joint"
-    print clutter_probabilities_joint
+        (clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint) = multi_detections.get_joint_clutter_probs()
+        print "clutter_probabilities1:"
+        print clutter_probabilities1
+        print "clutter_probabilities2"
+        print clutter_probabilities2
+        print "clutter_probabilities_joint"
+        print clutter_probabilities_joint
 
-    (mi, e1, e2) = get_mutual_info(clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint)
-    print "mutual information =", mi
-    print "entropy of clutter1 =", e1
-    print "entropy of clutter1 =", e2
+        (mi, e1, e2) = get_mutual_info(clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint)
+        print "mutual information =", mi
+        print "entropy of clutter1 =", e1
+        print "entropy of clutter1 =", e2
 
-    meas_errors = []
-    multi_det_count = 0
-    det_counts = [0,0,0]
-    for seq_idx in range(21):
-        for frame_idx in range(len(gt_objects[seq_idx])):
-            for gt_obj in gt_objects[seq_idx][frame_idx]:
-#                print type(gt_obj)
-#                print gt_obj
-#                print type(gt_obj[0])
-#                print gt_obj[0]
-                if(gt_obj.associated_detection):
-                    num_det = len(gt_obj.associated_detection)
-                else:    
-                    num_det = 0
-                assert(num_det in [0, 1, 2]), (num_det, gt_obj.associated_detection)
-                det_counts[num_det] += 1
-                if(num_det == 2):
-                    cur_meas_error = np.array([gt_obj.x - gt_obj.associated_detection[0].x, 
-                                            gt_obj.y - gt_obj.associated_detection[0].y,
-                                            gt_obj.x - gt_obj.associated_detection[1].x, 
-                                            gt_obj.y - gt_obj.associated_detection[1].y])
-#                                            gt_obj.x - (gt_obj.associated_detection[1].x + gt_obj.associated_detection[0].x)/2.0, 
-#                                            gt_obj.y - (gt_obj.associated_detection[1].y + gt_obj.associated_detection[0].y)/2.0])
-                    meas_errors.append(cur_meas_error)
-                    multi_det_count += 1
-    meas_noise_cov = np.cov(np.asarray(meas_errors).T)
-    print "det_counts:", det_counts
-    print "number of gt_objects detected twice =", multi_det_count
-    print meas_noise_cov.shape
-    print "!!!!!!!!!!!!!!!!!!!!!!!"
-    print "covariance between measurement types:"
-    print meas_noise_cov
+        meas_loc_errors = []
+        meas_size_errors = []
+        meas_all_errors = []
+        meas_all_errors_4edges = []
 
-    R_inv = inv(meas_noise_cov)
-    R_inv_11 = R_inv[0:2, 0:2]
-    R_inv_12 = R_inv[0:2, 2:4]
-    R_inv_12_T = R_inv[2:4, 0:2]
-    R_inv_22 = R_inv[2:4, 2:4]
-    #double check R_inv_12_T is the transpose of R_inv_12
-    assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
-           (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
-           (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
-           (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+        multi_det_count = 0
+        det_counts = [0,0,0]
+        avg_overlap_det1 = 0
+        avg_overlap_det2 = 0
+        avg_overlap_combined = 0
 
-    ####TESTING
-    #R_inv_12 = np.array([[0,0],[0,0]])
-    #R_inv_12_T = np.array([[0,0],[0,0]])
-    ####DONE TESTING
+        for seq_idx in range(21):
+            for frame_idx in range(len(gt_objects[seq_idx])):
+                for gt_obj in gt_objects[seq_idx][frame_idx]:
+    #                print type(gt_obj)
+    #                print gt_obj
+    #                print type(gt_obj[0])
+    #                print gt_obj[0]
+                    if(gt_obj.associated_detection):
+                        num_det = len(gt_obj.associated_detection)
+                    else:    
+                        num_det = 0
+                    assert(num_det in [0, 1, 2]), (num_det, gt_obj.associated_detection)
+                    det_counts[num_det] += 1
+                    if(num_det == 2):
+                        cur_meas_loc_error = np.array([gt_obj.x - gt_obj.associated_detection[0].x, 
+                                                gt_obj.y - gt_obj.associated_detection[0].y,
+                                                gt_obj.x - gt_obj.associated_detection[1].x, 
+                                                gt_obj.y - gt_obj.associated_detection[1].y])
+    #                                            gt_obj.x - (gt_obj.associated_detection[1].x + gt_obj.associated_detection[0].x)/2.0, 
+    #                                            gt_obj.y - (gt_obj.associated_detection[1].y + gt_obj.associated_detection[0].y)/2.0])
+                        cur_meas_size_error = np.array([gt_obj.width - gt_obj.associated_detection[0].width, 
+                                                gt_obj.height - gt_obj.associated_detection[0].height,
+                                                gt_obj.width - gt_obj.associated_detection[1].width, 
+                                                gt_obj.height - gt_obj.associated_detection[1].height])
+                        cur_meas_all_errors = np.array([gt_obj.x - gt_obj.associated_detection[0].x, 
+                                                gt_obj.y - gt_obj.associated_detection[0].y,
+                                                gt_obj.width - gt_obj.associated_detection[0].width, 
+                                                gt_obj.height - gt_obj.associated_detection[0].height,
+                                                gt_obj.x - gt_obj.associated_detection[1].x, 
+                                                gt_obj.y - gt_obj.associated_detection[1].y,
+                                                gt_obj.width - gt_obj.associated_detection[1].width, 
+                                                gt_obj.height - gt_obj.associated_detection[1].height])
 
-    joint_meas_errors = []
-    for seq_idx in range(21):
-        for frame_idx in range(len(gt_objects[seq_idx])):
-            for gt_obj in gt_objects[seq_idx][frame_idx]:
-                if(gt_obj.associated_detection):
-                    num_det = len(gt_obj.associated_detection)
-                else:    
-                    num_det = 0
-                assert(num_det in [0, 1, 2]), (num_det, gt_obj.associated_detection)
-                det_counts[num_det] += 1
-                if(num_det == 2):
-                    z_1 = np.array([gt_obj.associated_detection[0].x, gt_obj.associated_detection[0].y])
-                    z_2 = np.array([gt_obj.associated_detection[1].x, gt_obj.associated_detection[1].y])
-                    A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
-                    b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
-                    opt_z = np.dot(inv(A), b)
-                    cur_meas_error = np.array([gt_obj.x - opt_z[0], 
-                                               gt_obj.y - opt_z[1]])
-                    joint_meas_errors.append(cur_meas_error)
-    joint_meas_noise_cov = np.cov(np.asarray(joint_meas_errors).T)
-    print R_inv_11
-    print R_inv_12
-    print R_inv_12_T
-    print R_inv_22
-    print "covariance of joint measurement errors:"
-    print joint_meas_noise_cov
+                        cur_meas_all_errors_4edges = np.array([gt_obj.x1 - gt_obj.associated_detection[0].x1, 
+                                                gt_obj.x2 - gt_obj.associated_detection[0].x2,
+                                                gt_obj.y1 - gt_obj.associated_detection[0].y1, 
+                                                gt_obj.y2 - gt_obj.associated_detection[0].y2,
+                                                gt_obj.x1 - gt_obj.associated_detection[1].x1, 
+                                                gt_obj.x2 - gt_obj.associated_detection[1].x2,
+                                                gt_obj.y1 - gt_obj.associated_detection[1].y1, 
+                                                gt_obj.y2 - gt_obj.associated_detection[1].y2])                        
 
+                        meas_loc_errors.append(cur_meas_loc_error)
+                        meas_size_errors.append(cur_meas_size_error)
+                        meas_all_errors.append(cur_meas_all_errors)
+                        meas_all_errors_4edges.append(cur_meas_all_errors_4edges)
+                        multi_det_count += 1
+                        avg_overlap_det1+=boxoverlap(gt_obj, gt_obj.associated_detection[0])
+                        avg_overlap_det2+=boxoverlap(gt_obj, gt_obj.associated_detection[1])
+
+
+
+
+        meas_loc_noise_cov = np.cov(np.asarray(meas_loc_errors).T)
+        meas_size_noise_cov = np.cov(np.asarray(meas_size_errors).T)
+        meas_loc_noise_mean = np.mean(np.asarray(meas_loc_errors).T,1)
+        meas_size_noise_mean = np.mean(np.asarray(meas_size_errors).T,1)
+
+
+        meas_all_noise_cov = np.cov(np.asarray(meas_all_errors).T)
+        meas_all_noise_cor = np.corrcoef(np.asarray(meas_all_errors).T)
+        meas_all_noise_mean = np.mean(np.asarray(meas_all_errors).T,1)
+
+        meas_all_4edges_noise_cov = np.cov(np.asarray(meas_all_errors_4edges).T)
+        meas_all_4edges_noise_cor = np.corrcoef(np.asarray(meas_all_errors_4edges).T)
+        meas_all_4edges_noise_mean = np.mean(np.asarray(meas_all_errors_4edges).T,1)
+
+        print "det_counts:", det_counts
+        print "number of gt_objects detected twice =", multi_det_count
+        print meas_loc_noise_cov.shape
+        print "!!!!!!!!!!!!!!!!!!!!!!!"
+        print "mean of measurement location errors:"
+        print meas_loc_noise_mean
+        print "covariance between measurement type locations:"
+        print meas_loc_noise_cov
+        print "mean of measurement size errors:"
+        print meas_size_noise_mean
+        print "covariance between measurement type sizes:"
+        print meas_size_noise_cov
+
+
+
+
+        def combine_measurements_2d(meas_noise_cov, meas_noise_mean, m1x, m1y, m2x, m2y):
+            R_inv = inv(meas_noise_cov)
+            R_inv_11 = R_inv[0:2, 0:2]
+            R_inv_12 = R_inv[0:2, 2:4]
+            R_inv_12_T = R_inv[2:4, 0:2]
+            R_inv_22 = R_inv[2:4, 2:4]
+            #double check R_inv_12_T is the transpose of R_inv_12
+            assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+                   (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+                   (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+                   (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))            
+            z_1 = np.array([m1x + meas_noise_mean[0], m1y + meas_noise_mean[1]])
+            z_2 = np.array([m2x + meas_noise_mean[2], m2y + meas_noise_mean[3]])
+            A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+            b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+            opt_z = np.dot(inv(A), b)
+            return (opt_z[0],opt_z[1])
+
+        def combine_measurements_4d(meas_noise_cov, meas_noise_mean, gt_obj):
+            R_inv = inv(meas_noise_cov)
+            R_inv_11 = R_inv[0:4, 0:4]
+            R_inv_12 = R_inv[0:4, 4:8]
+            R_inv_12_T = R_inv[4:8, 0:4]
+            R_inv_22 = R_inv[4:8, 4:8]
+            #double check R_inv_12_T is the transpose of R_inv_12
+            assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+                   (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+                   (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+                   (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))            
+            z_1 = np.array([gt_obj.associated_detection[0].x + meas_noise_mean[0], 
+                            gt_obj.associated_detection[0].y + meas_noise_mean[1],
+                            gt_obj.associated_detection[0].width + meas_noise_mean[2],
+                            gt_obj.associated_detection[0].height + meas_noise_mean[3]])
+            z_2 = np.array([gt_obj.associated_detection[1].x + meas_noise_mean[4], 
+                            gt_obj.associated_detection[1].y + meas_noise_mean[5],
+                            gt_obj.associated_detection[1].width + meas_noise_mean[6],
+                            gt_obj.associated_detection[1].height + meas_noise_mean[7]])
+            A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+            b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+            opt_z = np.dot(inv(A), b)
+            return (opt_z[0],opt_z[1],opt_z[2],opt_z[3])
+
+        def combine_measurements_4d_edges(meas_noise_cov, meas_noise_mean, gt_obj):
+            R_inv = inv(meas_noise_cov)
+            R_inv_11 = R_inv[0:4, 0:4]
+            R_inv_12 = R_inv[0:4, 4:8]
+            R_inv_12_T = R_inv[4:8, 0:4]
+            R_inv_22 = R_inv[4:8, 4:8]
+            #double check R_inv_12_T is the transpose of R_inv_12
+            assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+                   (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+                   (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+                   (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))            
+            z_1 = np.array([gt_obj.associated_detection[0].x1 + meas_noise_mean[0], 
+                            gt_obj.associated_detection[0].x2 + meas_noise_mean[1],
+                            gt_obj.associated_detection[0].y1 + meas_noise_mean[2],
+                            gt_obj.associated_detection[0].y2 + meas_noise_mean[3]])
+            z_2 = np.array([gt_obj.associated_detection[1].x1 + meas_noise_mean[4], 
+                            gt_obj.associated_detection[1].x2 + meas_noise_mean[5],
+                            gt_obj.associated_detection[1].y1 + meas_noise_mean[6],
+                            gt_obj.associated_detection[1].y2 + meas_noise_mean[7]])
+            A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+            b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+            opt_z = np.dot(inv(A), b)
+            return (opt_z[0],opt_z[1],opt_z[2],opt_z[3])
+
+        joint_meas_errors = []
+        joint_meas_errors1 = []
+        for seq_idx in range(21):
+            for frame_idx in range(len(gt_objects[seq_idx])):
+                for gt_obj in gt_objects[seq_idx][frame_idx]:
+                    if(gt_obj.associated_detection):
+                        num_det = len(gt_obj.associated_detection)
+                    else:    
+                        num_det = 0
+                    assert(num_det in [0, 1, 2]), (num_det, gt_obj.associated_detection)
+                    if(num_det == 2):
+#                       z_1 = np.array([gt_obj.associated_detection[0].x, gt_obj.associated_detection[0].y])
+#                       z_2 = np.array([gt_obj.associated_detection[1].x, gt_obj.associated_detection[1].y])
+#                       A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+#                       b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+#                       opt_z = np.dot(inv(A), b)
+#                        meas_loc_noise_mean = np.array([0,0,0,0])
+#                        meas_size_noise_mean = np.array([0,0,0,0])
+######                        (comb_x, comb_y) = combine_measurements_2d(meas_loc_noise_cov, meas_loc_noise_mean, gt_obj.associated_detection[0].x,
+######                            gt_obj.associated_detection[0].y, gt_obj.associated_detection[1].x, gt_obj.associated_detection[1].y)
+######
+######                        (comb_width, comb_height) = combine_measurements_2d(meas_size_noise_cov, meas_size_noise_mean, gt_obj.associated_detection[0].width,
+######                            gt_obj.associated_detection[0].height, gt_obj.associated_detection[1].width, gt_obj.associated_detection[1].height)
+######
+######                        comb_det = detObject(comb_x-float(comb_width)/2.0, comb_x+float(comb_width)/2.0,
+######                                    comb_y-float(comb_height)/2.0, comb_y+float(comb_height)/2.0, -1, -1)
+#######                        comb_det = detObject(comb_x-float(gt_obj.associated_detection[1].width)/2.0, comb_x+float(gt_obj.associated_detection[1].width)/2.0,
+#######                                    comb_y-float(gt_obj.associated_detection[1].height)/2.0, comb_y+float(gt_obj.associated_detection[1].height)/2.0, -1, -1)
+
+
+##                        (comb_x, comb_y, comb_width, comb_height) = combine_measurements_4d(meas_all_noise_cov, meas_all_noise_mean, gt_obj)
+##                        comb_det = detObject(comb_x-float(comb_width)/2.0, comb_x+float(comb_width)/2.0,
+##                                             comb_y-float(comb_height)/2.0, comb_y+float(comb_height)/2.0, -1, -1)                        
+                        (comb_x1, comb_x2, comb_y1, comb_y2) = combine_measurements_4d_edges(meas_all_4edges_noise_cov, meas_all_4edges_noise_mean, gt_obj)
+                        comb_det = detObject(comb_x1, comb_x2, comb_y1, comb_y2, -1, -1)                        
+                        avg_overlap_combined+=boxoverlap(gt_obj, comb_det)
+
+######                        cur_meas_error = np.array([gt_obj.x - comb_x, 
+######                                                   gt_obj.y - comb_y])
+
+                        cur_meas_error = np.array([gt_obj.x - float(comb_x1 + comb_x2)/2.0, 
+                                                   gt_obj.y - float(comb_y1 + comb_y2)/2.0])
+
+                        joint_meas_errors.append(cur_meas_error)
+
+        joint_meas_noise_cov = np.cov(np.asarray(joint_meas_errors).T)
+#        print R_inv_11
+#        print R_inv_12
+#        print R_inv_12_T
+#        print R_inv_22
+        print "covariance of joint measurement errors:"
+        print joint_meas_noise_cov
+
+        avg_overlap_det1 /= det_counts[2]
+        avg_overlap_det2 /= det_counts[2]
+        avg_overlap_combined /= det_counts[2]
+
+        print "avg_overlap_det1:", avg_overlap_det1
+        print "avg_overlap_det2:", avg_overlap_det2
+        print "avg_overlap_combined:", avg_overlap_combined
+        assert(det_counts[2] == multi_det_count), (det_counts[2], multi_det_count)
+
+        print joint_meas_errors[0:4]
+        print joint_meas_errors1[0:4]
+
+        combined_meas_loc_noise_mean = np.mean(np.asarray(joint_meas_errors).T,1)
+        print "mean of combined measurement location errors:"
+        print combined_meas_loc_noise_mean
+
+        print "mean of measurement (location and size) errors:"
+        print np.around(meas_all_noise_mean, decimals=2)
+        print "correlation between measurement types (location and size):"
+        print np.around(meas_all_noise_cor, decimals=2)
+
+        print "mean of measurement (x1,x2,y1,y2) errors:"
+        print np.around(meas_all_4edges_noise_mean, decimals=2)
+        print "correlation between measurement types (x1,x2,y1,y2):"
+        print np.around(meas_all_4edges_noise_cor, decimals=2)        
 
     sleep(5)
 
@@ -3033,6 +3260,316 @@ def get_meas_target_sets(training_sequences, score_intervals, detection_names, \
 
 
 
+
+
+
+
+#Moved to returning dictionaries indexed by measurement type rather than lists
+#need to change wherever this is being used
+#WHEN WORKING delete get_meas_target_sets above
+def get_meas_target_sets_more_general(training_sequences, score_intervals, detection_names, \
+    obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, include_ignored_gt = False, \
+    include_dontcare_in_gt = False, include_ignored_detections = True):
+    """
+    Input:
+    - score_intervals: dictionary, where score_intervals['det_name'] contains score intervals for the
+        detection type specified by the string 'det_name'.  E.g. score_intervals['mscnn'] contains score
+        intervals for mscnn detections.
+    - detection_names: list, containing names of all detection types to be used.  
+
+    - doctor_clutter_probs: if True, add extend clutter probability list with 20 values of .0000001/20
+        and subtract .0000001 from element 0
+    """
+
+
+
+    #Should have a score interval for each detection type
+    assert(len(detection_names) == len(score_intervals))
+
+    #dictionaries for each measurement type, e.g meas_noise_covs['mscnn'] contains
+    #meas_noise_covs for mscnn detections
+    measurementTargetSetsBySequence = {}
+    target_emission_probs = {}
+    clutter_probabilities = {}
+    meas_noise_covs = {}
+
+    for det_name in detection_names:
+        print "getting measurement target set for", det_name, "detections"
+        (cur_measurementTargetSetsBySequence, cur_target_emission_probs, cur_clutter_probabilities, \
+            junk_birth_probabilities, cur_meas_noise_covs) = get_meas_target_set(training_sequences, score_intervals[det_name], \
+            det_name, obj_class, doctor_clutter_probs=doctor_clutter_probs, doctor_birth_probs=doctor_birth_probs, include_ignored_gt=include_ignored_gt, \
+            include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)
+        measurementTargetSetsBySequence[det_name] = cur_measurementTargetSetsBySequence
+        target_emission_probs[det_name] = cur_target_emission_probs
+        clutter_probabilities[det_name] = cur_clutter_probabilities
+        meas_noise_covs[det_name] = cur_meas_noise_covs
+
+
+    returnTargSets = []
+    #double check measurementTargetSetsBySequence lengths
+    seqCount = len(measurementTargetSetsBySequence[detection_names[0]])
+    for det_name, det_measurementTargetSetsBySequence in measurementTargetSetsBySequence.iteritems():
+        assert(len(det_measurementTargetSetsBySequence) == seqCount)
+
+    for seq_idx in range(seqCount):
+        curSeq_returnTargSets = {}
+        for det_name, det_measurementTargetSetsBySequence in measurementTargetSetsBySequence.iteritems():
+            curSeq_returnTargSets[det_name] = det_measurementTargetSetsBySequence[seq_idx]
+        returnTargSets.append(curSeq_returnTargSets)
+
+    print "Constructed returnTargSets"
+
+
+    mail = mailpy.Mail("") #this is silly and could be cleaned up
+    #dictionary where all_det_objects['det_name'] contains the detected objects of type 'det_name'
+    all_det_objects = {}
+    for det_name in detection_names:
+        (gt_objects, cur_det_objects) = evaluate(min_score=score_intervals[det_name][0], \
+            det_method=det_name, mail=mail, obj_class=obj_class, include_ignored_gt=include_ignored_gt,\
+            include_dontcare_in_gt=include_dontcare_in_gt, include_ignored_detections=include_ignored_detections)        
+        all_det_objects[det_name] = cur_det_objects
+
+    print "Constructed all_det_objects"
+
+
+
+    for gt_seq in gt_objects:
+        for gt_frame in gt_seq:
+            for gt_obj in gt_frame:
+                assert(isinstance(gt_obj.assoc_dets, dict))
+
+    all_detections = MultiDetections_many(gt_objects, all_det_objects, training_sequences)
+    (clutter_association_counts, clutter_association_probs) = all_detections.get_clutter_association_probs()
+
+    (gt_association_counts, gt_association_probs) = all_detections.get_gt_association_probs()
+
+    print "clutter_association_probs:"
+    print clutter_association_probs
+    print "clutter_association_counts:"
+    print clutter_association_counts
+
+    print "gt_association_probs:"
+    print gt_association_probs
+    print "gt_association_counts:"
+    print gt_association_counts
+#    sleep(1)
+    print "HELLO#7"
+
+##############################################################################
+
+
+
+    det_counts = [0,0,0,0,0,0]
+    avg_overlap_det1 = 0
+    avg_overlap_det2 = 0
+    avg_overlap_combined = 0
+
+    #dictionary where detection_ids['det_name'] is a list of gt_obj_id's
+    #that a detection of type 'det_name' is associated with
+    detection_ids = defaultdict(list)
+    gt_obj_id = 0
+    #detection_errors['det_name'][gt_obj_id] is the error of detection type
+    #specified by 'det_name' for the ground truth object with id gt_obj_id
+    detection_errors = {}
+    for det_name in detection_names:
+        detection_errors[det_name] = {}
+
+    for seq_idx in range(21):
+        for frame_idx in range(len(gt_objects[seq_idx])):
+            for gt_obj in gt_objects[seq_idx][frame_idx]:
+                gt_obj_id += 1
+                num_det = len(gt_obj.assoc_dets)
+                det_counts[num_det] += 1
+
+
+                for det_name, det in gt_obj.assoc_dets.iteritems():
+                    cur_meas_loc_error = np.array([det.x - gt_obj.x, 
+                                                   det.y - gt_obj.y,
+                                                   det.width - gt_obj.width, 
+                                                   det.height - gt_obj.height])                        
+                    detection_errors[det_name][gt_obj_id] = cur_meas_loc_error
+                    detection_ids[det_name].append(gt_obj_id)
+
+
+    def calc_cov_4DetAttributes(det_name1, det_name2, detection_errors, detection_ids):
+        joint_meas_errors = []
+        for _id in detection_ids[det_name1]:
+            if (_id in detection_ids[det_name2]): #detections of both types are associated with this gt_object
+                joint_meas_errors.append(np.concatenate((detection_errors[det_name1][_id], detection_errors[det_name2][_id])))
+        cov = np.cov(np.asarray(joint_meas_errors).T)
+        cov_block_12 = cov[0:4, 4:8]
+        cov_block_21 = cov[4:8, 0:4]
+        if(det_name1 == det_name2):
+            assert(np.all(cov_block_12==cov_block_21))
+        else:
+            assert(np.all(np.transpose(cov_block_12)==cov_block_21))
+
+        return(cov_block_12, cov_block_21)
+
+    #covariance_blocks{('det_name1', 'det_name2')} is the block of the complete covariance matrix
+    #between detection sources 1 and 2
+    covariance_blocks = {}
+    #meas_noise_mean: a dictionary where meas_noise_mean['meas_namei'] = the mean measurement noise for measurement
+    #source with name 'meas_namei'        
+    meas_noise_mean = {}
+    for det_name1 in detection_names:
+        meas_noise_mean[det_name1] = np.mean(np.asarray([v for v in detection_errors[det_name1].values()]).T,1)
+        for det_name2 in detection_names:
+            if not (det_name1, det_name2) in covariance_blocks:
+                (cov_block_12, cov_block_21) = calc_cov_4DetAttributes(det_name1, det_name2, detection_errors, detection_ids)
+                covariance_blocks[(det_name1, det_name2)] = cov_block_12
+                covariance_blocks[(det_name2, det_name1)] = cov_block_21
+
+    #now assemble the full covariance matrix
+    full_cov = np.zeros((0,4*len(detection_names)))
+    for det_name1 in detection_names:
+        cur_block_of_rows = np.zeros((4,0))
+        for det_name2 in detection_names:
+            cur_block_of_rows = np.concatenate((cur_block_of_rows,covariance_blocks[(det_name1, det_name2)]),axis=1)
+        full_cov = np.concatenate((full_cov,cur_block_of_rows),axis=0)
+
+    full_cov_inv = inv(full_cov)
+    #now create dictionary of blocks of the inverse of the covariance matrix
+    inv_covariance_blocks = {}
+    for (idx1, det_name1) in enumerate(detection_names):
+        for (idx2, det_name2) in enumerate(detection_names):
+            inv_covariance_blocks[(det_name1, det_name2)] = full_cov_inv[4*idx1:4*(idx1+1), 4*idx2:4*(idx2+1)]
+
+#        print "det_counts:", det_counts
+#        print meas_loc_noise_cov.shape
+#        print "!!!!!!!!!!!!!!!!!!!!!!!"
+#        print "mean of measurement location errors:"
+#        print meas_loc_noise_mean
+#        print "covariance between measurement type locations:"
+#        print meas_loc_noise_cov
+#        print "mean of measurement size errors:"
+#        print meas_size_noise_mean
+#        print "covariance between measurement type sizes:"
+#        print meas_size_noise_cov
+
+#FIXME        joint_meas_errors = []
+    #box_overlaps_byDetSet[(ImmutableSet(['det_name1', 'det_name1']))]
+    #is a list of box overlaps when det_name1 and det_name2 are the only
+    #types of detections associated with the ground truth
+    box_overlaps_byDetSet = defaultdict(list)
+    #detSet_count[(ImmutableSet(['det_name1', 'det_name1']))]
+    #is the number of ground truth objects that are only associated with detection of type
+    #det_name1 and det_name2      
+    num_det_gt_obj = 0
+    sum_all_overlap = 0    
+    detSet_count = defaultdict(int)
+    for seq_idx in range(21):
+        for frame_idx in range(len(gt_objects[seq_idx])):
+            for gt_obj in gt_objects[seq_idx][frame_idx]:
+                cur_assoc_dets = []
+                for det_name, det in gt_obj.assoc_dets.iteritems():
+                    cur_assoc_dets.append(det_name)
+                cur_assoc_dets_set = ImmutableSet(cur_assoc_dets)
+                detSet_count[cur_assoc_dets_set] += 1
+                if(len(cur_assoc_dets) > 0):
+                    (combined_meas_mean, combined_covariance) = combine_arbitrary_number_measurements_4d(inv_covariance_blocks, meas_noise_mean, gt_obj)
+                    
+                    assert(combined_meas_mean[2] > 0), combined_meas_mean
+                    assert(combined_meas_mean[3] > 0), combined_meas_mean
+
+                    comb_det = detObject(combined_meas_mean[0]-combined_meas_mean[2]/2.0, combined_meas_mean[0]+combined_meas_mean[2]/2.0,
+                                         combined_meas_mean[1]-combined_meas_mean[3]/2.0, combined_meas_mean[1]+combined_meas_mean[3]/2.0, -1, -1)                        
+                    overlap_combined=boxoverlap(gt_obj, comb_det)
+                    sum_all_overlap += boxoverlap(gt_obj, comb_det)
+                    num_det_gt_obj += 1
+                    box_overlaps_byDetSet[cur_assoc_dets_set].append(overlap_combined)
+
+#                        cur_meas_error = np.array([gt_obj.x - float(comb_x1 + comb_x2)/2.0, 
+#                                                   gt_obj.y - float(comb_y1 + comb_y2)/2.0])
+
+#                        joint_meas_errors.append(cur_meas_error)
+
+#        joint_meas_noise_cov = np.cov(np.asarray(joint_meas_errors).T)
+#        print "covariance of joint measurement errors:"
+#        print joint_meas_noise_cov
+
+    avg_box_overlap_byDetSet = {}
+    for (det_set, box_overlaps) in box_overlaps_byDetSet.iteritems():
+        avg_box_overlap_byDetSet[det_set] = sum(box_overlaps)/detSet_count[det_set]
+
+    print "combined box overlaps:"
+    print avg_box_overlap_byDetSet
+
+#FIXME        print joint_meas_errors[0:4]
+#
+#FIXME        combined_meas_loc_noise_mean = np.mean(np.asarray(joint_meas_errors).T,1)
+#        print "mean of combined measurement location errors:"
+#        print combined_meas_loc_noise_mean
+#
+#        print "mean of measurement (location and size) errors:"
+#        print np.around(meas_all_noise_mean, decimals=2)
+#        print "correlation between measurement types (location and size):"
+#        print np.around(meas_all_noise_cor, decimals=2)
+#
+#        print "mean of measurement (x1,x2,y1,y2) errors:"
+#        print np.around(meas_all_4edges_noise_mean, decimals=2)
+#        print "correlation between measurement types (x1,x2,y1,y2):"
+#        print np.around(meas_all_4edges_noise_cor, decimals=2)        
+
+    print "averarge box overlap for all detected gt objects =", sum_all_overlap/num_det_gt_obj
+
+    for (det_set, avg_box_overlap) in avg_box_overlap_byDetSet.iteritems():
+        print 'det_set:', det_set
+        print 'avg_box_overlap:', avg_box_overlap
+        print 'num of objects =', detSet_count[det_set], ', fraction of detected objects =', detSet_count[det_set]/num_det_gt_obj
+
+    sleep(5)
+
+
+##############################################################################
+    #FIX ME!! for more than two detection types
+    if len(detection_names) == 2:
+        multi_detections = MultiDetections_2(gt_objects, all_det_objects[detection_names[0]], 
+                                           all_det_objects[detection_names[1]], training_sequences)
+
+        (p_det1clutter_assoc, p_det2clutter_assoc) = multi_detections.get_prob_clutter_assoc()
+        print "probability that clutter from detection source 1 is associated from clutter from detection source 2 =", p_det1clutter_assoc
+        print "probability that clutter from detection source 2 is associated from clutter from detection source 1 =", p_det2clutter_assoc
+
+
+        print "Original clutter probabilities:"
+        print clutter_probabilities
+
+        (clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint) = multi_detections.get_joint_clutter_probs()
+        print "clutter_probabilities1:"
+        print clutter_probabilities1
+        print "clutter_probabilities2"
+        print clutter_probabilities2
+        print "clutter_probabilities_joint"
+        print clutter_probabilities_joint
+
+        (mi, e1, e2) = get_mutual_info(clutter_probabilities1, clutter_probabilities2, clutter_probabilities_joint)
+        print "mutual information =", mi
+        print "entropy of clutter1 =", e1
+        print "entropy of clutter1 =", e2
+
+
+##############################################################################
+
+
+
+    (birth_probabilities_mscnn, birth_probabilities_regionlets) = apply_function_on_intervals_2_det(mscnn_score_intervals, \
+        regionlets_score_intervals, multi_detections.get_birth_probabilities_score_range)
+
+    if(doctor_birth_probs):
+        doctor_birth_probabilities(birth_probabilities_mscnn)
+        doctor_birth_probabilities(birth_probabilities_regionlets)
+
+    birth_probabilities = [birth_probabilities_mscnn, birth_probabilities_regionlets]
+    print "HELLO#8"
+
+    (death_probs_near_border, death_counts_near_border, living_counts_near_border) = multi_detections.get_death_probs(near_border = True)
+    (death_probs_not_near_border, death_counts_not_near_border, living_counts_not_near_border) = multi_detections.get_death_probs(near_border = False)
+
+    #FIX ME, move to returning dictionaries with detection name keys instead of lists
+    return (returnTargSets, target_emission_probs, clutter_probabilities, birth_probabilities, meas_noise_covs, death_probs_near_border, death_probs_not_near_border)
+
+
 #########################################################################
 # entry point of evaluation script
 # input:
@@ -3041,9 +3578,6 @@ def get_meas_target_sets(training_sequences, score_intervals, detection_names, \
 #   - user_sha (email of user who submitted the results, optional)
 if __name__ == "__main__":
     sort_dets_on_intervals = False
-    include_ignored_gt = False
-    include_dontcare_in_gt = False
-    include_ignored_detections = False
     training_sequences = [i for i in range(21)]
     if sort_dets_on_intervals:
         MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
@@ -3062,20 +3596,26 @@ if __name__ == "__main__":
 #    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
 #    include_ignored_detections = include_ignored_detections)
 
-#    detection_names = ['3dop', 'mono3d', 'mv3d', 'mscnn', 'regionlets']
-    detection_names = ['3dop', 'mono3d', 'mv3d', 'mscnn']
+    detection_names = ['3dop', 'mono3d', 'mv3d', 'mscnn', 'regionlets']
+#    detection_names = ['3dop', 'mono3d', 'mv3d', 'mscnn']
 #    detection_names = ['3dop', 'mv3d']
 #    detection_names = ['mono3d', 'mv3d']
 #    detection_names = ['regionlets', 'mscnn']
+#    detection_names = ['mv3d', 'mscnn']
+#    detection_names = ['mono3d', 'mscnn']
     score_intervals = {}
     score_intervals['3dop'] = DOP3_SCORE_INTERVALS
     score_intervals['mono3d'] = MONO3D_SCORE_INTERVALS
     score_intervals['mv3d'] = MV3D_SCORE_INTERVALS
-#    score_intervals['regionlets'] = REGIONLETS_SCORE_INTERVALS
+    score_intervals['regionlets'] = REGIONLETS_SCORE_INTERVALS
     score_intervals['mscnn'] = MSCNN_SCORE_INTERVALS
 
 
-    get_meas_target_sets(training_sequences, score_intervals, detection_names, \
+#    get_meas_target_sets(training_sequences, score_intervals, detection_names, \
+#    obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, include_ignored_gt = False, \
+#    include_dontcare_in_gt = False, include_ignored_detections = True)
+
+    get_meas_target_sets_more_general(training_sequences, score_intervals, detection_names, \
     obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, include_ignored_gt = False, \
     include_dontcare_in_gt = False, include_ignored_detections = True)
 
