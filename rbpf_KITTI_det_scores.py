@@ -81,7 +81,7 @@ PROFILE = False
 USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
-PLOT_TARGET_LOCATIONS = True
+#PLOT_TARGET_LOCATIONS = True
 if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
