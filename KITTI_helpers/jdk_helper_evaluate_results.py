@@ -15,7 +15,7 @@ import glob
 
 import mailpy
 
-DATA_PATH = "/Users/jkuck/Classes/cs229/rbpf_atlas/KITTI_helpers/data"
+DATA_PATH = "/atlas/u/jkuck/rbpf_target_tracking/KITTI_helpers/data"
 
 #########################################################################
 # function that does the evaluation
@@ -183,7 +183,7 @@ class trackingEvaluation(object):
         self.gt_trajectories   = [[] for x in xrange(self.n_sequences)] 
         self.ign_trajectories  = [[] for x in xrange(self.n_sequences)]
 
-        #jdk, create a folder for storing annoted results when evaluating with the old script (correct FP count)
+        #jdk, create a folder for storing annotated results when evaluating with the old script (correct FP count)
         if (not self.corrected_version) and (not os.path.exists(self.t_path + "annotated_results")):
             os.makedirs(self.t_path + "annotated_results")
 

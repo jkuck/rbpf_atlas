@@ -36,6 +36,8 @@ from learn_params1 import get_meas_target_sets_lsvm_and_regionlets
 from learn_params1 import get_meas_target_sets_regionlets_general_format
 from learn_params1 import get_meas_target_sets_mscnn_general_format
 from learn_params1 import get_meas_target_sets_mscnn_and_regionlets
+from learn_params1 import get_meas_target_sets_2sources_general
+from learn_params1 import get_meas_target_sets_1sources_general
 
 from jdk_helper_evaluate_results import eval_results
 import cProfile
@@ -79,7 +81,7 @@ PROFILE = False
 USE_GENERATED_DATA = False
 
 USE_RANDOM_SEED = False
-PLOT_TARGET_LOCATIONS = True
+#PLOT_TARGET_LOCATIONS = True
 if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
@@ -87,9 +89,9 @@ if USE_RANDOM_SEED:
 USE_LEARNED_KF_PARAMS = True
 USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
-RUN_ONLINE = True #save online results 
+RUN_ONLINE = False #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 0
+ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
@@ -98,7 +100,12 @@ FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False
 MAX_1_MEAS_UPDATE = True
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
-UPDATE_MULT_MEAS_SIMUL = False
+UPDATE_MULT_MEAS_SIMUL = True
+#for debugging, zero out covariance between measurement sources when
+#UPDATE_MULT_MEAS_SIMUL=True, should be the same result as sequential updates
+TREAT_MEAS_INDEP = True
+#for debugging, actually do 2 sequential updates, but after all associations
+TREAT_MEAS_INDEP_2 = True
 
 RESAMPLE_RATIO = 4.0 #resample when get_eff_num_particles < N_PARTICLES/RESAMPLE_RATIO
 
@@ -115,7 +122,7 @@ USE_PYTHON_GAUSSIAN = False #if False bug, using R_default instead of S, check U
 default_time_step = .1 
 TIME_SCALED = False
 
-USE_CONSTANT_R = False
+USE_CONSTANT_R = True
 #For testing why score interval for R are slow
 CACHED_LIKELIHOODS = 0
 NOT_CACHED_LIKELIHOODS = 0
@@ -129,8 +136,10 @@ if USE_LEARNED_KF_PARAMS:
                           [0,           0, 5.56278505, 0],
                           [0,           0,           0, 3]])
     
-    R_default = np.array([[ 0.0,   0.0],
-                          [ 0.0,   0.0]])
+#    R_default = np.array([[ 0.0,   0.0],
+#                          [ 0.0,   0.0]])
+    R_default = np.array([[ 0.01,   0.0],
+                          [ 0.0,   0.01]])    
     
     
     #learned from all GT
@@ -355,30 +364,47 @@ class Target:
         assert(len(self.associated_measurements) == 2)
         assert(self.associated_measurements[0]['cur_time'] == self.associated_measurements[1]['cur_time'])
 
-        R_inv = inv(JOINT_MEAS_NOISE_COV)
-        R_inv_11 = R_inv[0:2, 0:2]
-        R_inv_12 = R_inv[0:2, 2:4]
-        R_inv_12_T = R_inv[2:4, 0:2]
-        R_inv_22 = R_inv[2:4, 2:4]
-        #double check R_inv_12_T is the transpose of R_inv_12
-        assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
-               (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
-               (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
-               (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+        if TREAT_MEAS_INDEP:
+            JOINT_MEAS_NOISE_COV[0:2, 2:4] = np.array([[0,0],[0,0]])
+            JOINT_MEAS_NOISE_COV[2:4, 0:2] = np.array([[0,0],[0,0]])
+        if TREAT_MEAS_INDEP_2:
+            reformat_meas1 = np.array([[self.associated_measurements[0]['meas_loc'][0]],
+                                      [self.associated_measurements[0]['meas_loc'][1]]])            
+            (self.x, self.P) = self.kf_update(reformat_meas1, JOINT_MEAS_NOISE_COV[0:2, 0:2])
 
-        z_1 = self.associated_measurements[0]['meas_loc']
-        z_2 = self.associated_measurements[1]['meas_loc']
-        A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
-        b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
-        combined_z = np.dot(inv(A), b)
-        combined_R = inv(A)
+            reformat_meas2 = np.array([[self.associated_measurements[1]['meas_loc'][0]],
+                                      [self.associated_measurements[1]['meas_loc'][1]]])            
+            (self.x, self.P) = self.kf_update(reformat_meas2, JOINT_MEAS_NOISE_COV[2:4, 2:4])
+
+        else:    
+            R_inv = inv(JOINT_MEAS_NOISE_COV)
+            R_inv_11 = R_inv[0:2, 0:2]
+            R_inv_12 = R_inv[0:2, 2:4]
+            R_inv_12_T = R_inv[2:4, 0:2]
+            R_inv_22 = R_inv[2:4, 2:4]
+            #double check R_inv_12_T is the transpose of R_inv_12
+            assert((R_inv_12[0,0] - R_inv_12_T[0,0] < .0000001) and
+                   (R_inv_12[0,1] - R_inv_12_T[1,0] < .0000001) and
+                   (R_inv_12[1,0] - R_inv_12_T[0,1] < .0000001) and
+                   (R_inv_12[1,1] - R_inv_12_T[1,1] < .0000001))
+
+            z_1 = self.associated_measurements[0]['meas_loc']
+            z_2 = self.associated_measurements[1]['meas_loc']
+#            print z_1.shape
+#            print z_2.shape
+#            sleep(4)
+            A = R_inv_11 + R_inv_12 + R_inv_12_T + R_inv_22
+            b = np.dot(z_1, R_inv_11) + np.dot(z_1, R_inv_12) + np.dot(z_2, R_inv_12_T) + np.dot(z_2, R_inv_22)
+            combined_z = np.dot(inv(A), b)
+            combined_R = inv(A)
 
 
-        reformat_combined_z = np.array([[combined_z[0]],
-                                  [combined_z[1]]])
-        assert(self.x.shape == (4, 1))
+            reformat_combined_z = np.array([[combined_z[0]],
+                                      [combined_z[1]]])
+            assert(self.x.shape == (4, 1))
 
-        (self.x, self.P) = self.kf_update(reformat_meas, combined_R)
+    #        (self.x, self.P) = self.kf_update(reformat_meas, combined_R)
+            (self.x, self.P) = self.kf_update(reformat_combined_z, combined_R)
 
         assert(self.x.shape == (4, 1))
         assert(self.P.shape == (4, 4))
@@ -1656,8 +1682,8 @@ if __name__ == "__main__":
     
     # check for correct number of arguments. if user_sha and email are not supplied,
     # no notification email is sent (this option is used for auto-updates)
-    if len(sys.argv)!=10:
-        print "Supply 9 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
+    if len(sys.argv)!=11:
+        print "Supply 10 arguments: the number of particles (int), include_ignored_gt (bool), include_dontcare_in_gt (bool),"
         print "use_regionlets(bool) use_mscnn(bool) sort_dets_on_intervals (bool), run_idx, total_runs, seq_idx"
         print "received ", len(sys.argv), " arguments"
         for i in range(len(sys.argv)):
@@ -1665,9 +1691,9 @@ if __name__ == "__main__":
         sys.exit(1);
 
     N_PARTICLES = int(sys.argv[1])
-    run_idx = int(sys.argv[7]) #the index of this run
-    total_runs = int(sys.argv[8]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
-    seq_idx = int(sys.argv[9]) #the index of the sequence to process
+    run_idx = int(sys.argv[8]) #the index of this run
+    total_runs = int(sys.argv[9]) #the total number of runs, for checking whether all runs are finished and results should be evaluated
+    seq_idx = int(sys.argv[10]) #the index of the sequence to process
 
     #########################
     # LSTM initialization
@@ -1690,7 +1716,7 @@ if __name__ == "__main__":
       scaler = pickle.load(handle)
     #########################
 
-    for i in range(2,6):
+    for i in range(2,5):
         if(sys.argv[i] != 'True' and sys.argv[i] != 'False'):
             print "Booleans must be supplied as 'True' or 'False' (without quotes)"
             sys.exit(1);
@@ -1700,11 +1726,14 @@ if __name__ == "__main__":
     include_ignored_gt = (sys.argv[2] == 'True')
     include_dontcare_in_gt = (sys.argv[3] == 'True')
     use_regionlets = (sys.argv[4] == 'True')
-    use_mscnn = (sys.argv[5] == 'True')
-    sort_dets_on_intervals = (sys.argv[6] == 'True')
+    det1_name = sys.argv[5]
+    det2_name = sys.argv[6]
+    if(det2_name == 'None'):
+        det2_name = None
+    sort_dets_on_intervals = (sys.argv[7] == 'True')
 
     DESCRIPTION_OF_RUN = get_description_of_run(include_ignored_gt, include_dontcare_in_gt, 
-                            sort_dets_on_intervals, use_regionlets, use_mscnn)
+                            sort_dets_on_intervals, use_regionlets, det1_name, det2_name)
 
     results_folder_name = '%s/%d_particles' % (DESCRIPTION_OF_RUN, N_PARTICLES)
 #   results_folder = '%s/rbpf_KITTI_results_par_exec_trainAllButCurSeq_10runs_dup3/%s' % (DIRECTORY_OF_ALL_RESULTS, results_folder_name)
@@ -1745,53 +1774,81 @@ if __name__ == "__main__":
         include_ignored_detections = True 
 
         if sort_dets_on_intervals:
-            MSCNN_SCORE_INTERVALS = [float(i)*.1 for i in range(3,10)]              
-            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 20)]
-#            REGIONLETS_SCORE_INTERVALS = [i for i in range(2, 16)]
+            score_interval_dict = {\
+                'mscnn' : [float(i)*.1 for i in range(3,10)],              
+                'regionlets' : [i for i in range(2, 20)],
+                '3dop' : [float(i)*.1 for i in range(0,10)],            
+                'mono3d' : [float(i)*.1 for i in range(0,10)],            
+                'mv3d' : [float(i)*.1 for i in range(0,10)]}        
+#            'regionlets' = [i for i in range(2, 16)]
         else:
-#            MSCNN_SCORE_INTERVALS = [.5]                                
-            MSCNN_SCORE_INTERVALS = [.3]                                
-            REGIONLETS_SCORE_INTERVALS = [2]
-
+            score_interval_dict = {\
+#            'mscnn' = [.5],                                
+            'mscnn' : [.3],                                
+            'regionlets' : [2],
+            '3dop' : [.0],
+            'mono3d' : [.0],
+            'mv3d' : [.0]}
 
         #train on all training sequences, except the current sequence we are testing on
         training_sequences = [i for i in [i for i in range(21)] if i != seq_idx]
         #training_sequences = [i for i in SEQUENCES_TO_PROCESS if i != seq_idx]
         #training_sequences = [0]
 
-        #only use regionlets detections
-        if use_regionlets and (not use_mscnn):
-            SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-                get_meas_target_sets_regionlets_general_format(training_sequences, REGIONLETS_SCORE_INTERVALS, \
-                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
-                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                include_ignored_detections = include_ignored_detections)
+#        #only use regionlets detections
+#        if use_regionlets and (not use_mscnn):
+#            SCORE_INTERVALS = [REGIONLETS_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+#                get_meas_target_sets_regionlets_general_format(training_sequences, REGIONLETS_SCORE_INTERVALS, \
+#                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+#                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                include_ignored_detections = include_ignored_detections)
+#
+#        #only use mscnn detections
+#        elif (not use_regionlets) and use_mscnn:
+#            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+#                get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
+#                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
+#                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                include_ignored_detections = include_ignored_detections)
+#
+#        #use mscnn and regionlets detections
+#        elif use_regionlets and use_mscnn:
+#            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
+#            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+#                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
+#                    get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
+#                    REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+#                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+#                    include_ignored_detections = include_ignored_detections)
+#        else:
+#            print "Unexpected combination of detections"
+#            sys.exit(1);        
 
-        #only use mscnn detections
-        elif (not use_regionlets) and use_mscnn:
-            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS]
-            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
-                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
-                get_meas_target_sets_mscnn_general_format(training_sequences, MSCNN_SCORE_INTERVALS, \
-                obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True, \
-                include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
-                include_ignored_detections = include_ignored_detections)
-
-        #use mscnn and regionlets detections
-        elif use_regionlets and use_mscnn:
-            SCORE_INTERVALS = [MSCNN_SCORE_INTERVALS, REGIONLETS_SCORE_INTERVALS]
+        det1_score_intervals = score_interval_dict[det1_name]
+        if det2_name:
+            det2_score_intervals = score_interval_dict[det2_name]
+            SCORE_INTERVALS = [det1_score_intervals, det2_score_intervals]
             (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
                 MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES, JOINT_MEAS_NOISE_COV) = \
-                    get_meas_target_sets_mscnn_and_regionlets(training_sequences, MSCNN_SCORE_INTERVALS, \
-                    REGIONLETS_SCORE_INTERVALS, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+                    get_meas_target_sets_2sources_general(training_sequences, det1_score_intervals, \
+                    det2_score_intervals, det1_name, det2_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
                     include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
                     include_ignored_detections = include_ignored_detections)
 
         else:
-            print "Unexpected combination of detections"
-            sys.exit(1);        
+            SCORE_INTERVALS = [det1_score_intervals]
+            (measurementTargetSetsBySequence, TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES, BIRTH_PROBABILITIES,\
+                MEAS_NOISE_COVS, BORDER_DEATH_PROBABILITIES, NOT_BORDER_DEATH_PROBABILITIES) = \
+                    get_meas_target_sets_1sources_general(training_sequences, det1_score_intervals, \
+                    det1_name, obj_class = "car", doctor_clutter_probs = True, doctor_birth_probs = True,\
+                    include_ignored_gt = include_ignored_gt, include_dontcare_in_gt = include_dontcare_in_gt, \
+                    include_ignored_detections = include_ignored_detections)            
+
+
 
         params = Parameters(TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES,\
                  BIRTH_PROBABILITIES, MEAS_NOISE_COVS, R_default, H,\
