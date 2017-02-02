@@ -16,7 +16,7 @@ DIRECTORY_OF_ALL_RESULTS = './ICML_prep_correctedOnline/'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
 
 
-CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_multMeas1update_online3frameDelay'
+CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_multMeas1update_online0frameDelay'
 #CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_max1MeasUpdate_online3frameDelay'
 #CUR_EXPERIMENT_BATCH_NAME = 'measuredR_1xQ_max1MeasUpdate_online3frameDelay'
 
