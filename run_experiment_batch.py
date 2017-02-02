@@ -10,14 +10,14 @@ SEQUENCES_TO_PROCESS = [i for i in range(21)]
 #NUM_PARTICLES_TO_TEST = [25, 100]
 NUM_PARTICLES_TO_TEST = [100]
 #DIRECTORY_OF_ALL_RESULTS = './ICML_prep_correctedOnline/propose_k=1_nearest_targets'
-DIRECTORY_OF_ALL_RESULTS = './ICML_prep_correctedOnline/'
+DIRECTORY_OF_ALL_RESULTS = './ICML_prep_correctedOnline'
 
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_probDet95_clutLambdaPoint1_noise05_noShuffle_beta1'
 #CUR_EXPERIMENT_BATCH_NAME = 'genData_origRBPF_multMeas_fixedRounding_resampleRatio4_scaled_ShuffleMeas_timeScaled_PQdiv100'
 
 
-CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_multMeas1update_online0frameDelay'
-#CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_max1MeasUpdate_online3frameDelay'
+#CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_multMeas1update_online0frameDelay'
+CUR_EXPERIMENT_BATCH_NAME = 'CHECK_K_NEAREST_TARGETS=False/Reference/Rto0_4xQ_max1MeasUpdate_online3frameDelay'
 #CUR_EXPERIMENT_BATCH_NAME = 'measuredR_1xQ_max1MeasUpdate_online3frameDelay'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets_on_intervals,

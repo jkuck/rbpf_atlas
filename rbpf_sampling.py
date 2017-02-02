@@ -5,21 +5,23 @@ import random
 import math
 
 
-CHECK_K_NEAREST_TARGETS = True
-K_NEAREST_TARGETS = 1
-
 class Parameters:
     def __init__(self, target_emission_probs, clutter_probabilities,\
                  birth_probabilities, meas_noise_cov, R_default, H,\
                  USE_PYTHON_GAUSSIAN, USE_CONSTANT_R, score_intervals,\
-                 p_birth_likelihood, p_clutter_likelihood):
+                 p_birth_likelihood, p_clutter_likelihood, CHECK_K_NEAREST_TARGETS,
+                 K_NEAREST_TARGETS):
         '''
         Inputs:
         -  score_intervals: list of lists, where score_intervals[i] is a list
             specifying the score intervals for measurement source i.  
             score_intervals[i][j] specifies the lower bound for the jth score
             interval corresponding to measurement source i (0 indexed).
+        - CHECK_K_NEAREST_TARGETS: If true only possibly associate each measurement with
+            one of its K_NEAREST_TARGETS.  If false measurements may be associated
+            with any target.
         '''
+
         self.target_emission_probs = target_emission_probs
         self.clutter_probabilities = clutter_probabilities
         self.birth_probabilities = birth_probabilities
@@ -35,6 +37,9 @@ class Parameters:
 
         self.p_birth_likelihood = p_birth_likelihood 
         self.p_clutter_likelihood = p_clutter_likelihood
+
+        self.CHECK_K_NEAREST_TARGETS = CHECK_K_NEAREST_TARGETS
+        self.K_NEAREST_TARGETS = K_NEAREST_TARGETS
 
 
     def get_score_index(self, score, meas_source_index):
@@ -327,8 +332,8 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
         #compute target association proposal probabilities
         proposal_distribution_list = []
 
-        if CHECK_K_NEAREST_TARGETS:
-            targets_to_check = get_k_nearest_targets(cur_meas, K_NEAREST_TARGETS)
+        if params.CHECK_K_NEAREST_TARGETS:
+            targets_to_check = get_k_nearest_targets(cur_meas, params.K_NEAREST_TARGETS)
         else:
             targets_to_check = [i for i in range(total_target_count)]
 
@@ -385,8 +390,8 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
 
 
         proposal_distribution /= float(np.sum(proposal_distribution))
-        if CHECK_K_NEAREST_TARGETS:
-            proposal_length = min(K_NEAREST_TARGETS+2, total_target_count+2)
+        if params.CHECK_K_NEAREST_TARGETS:
+            proposal_length = min(params.K_NEAREST_TARGETS+2, total_target_count+2)
             assert(len(proposal_distribution) == proposal_length), (proposal_length, len(proposal_distribution))
 
         else:
@@ -396,8 +401,8 @@ def associate_measurements_sequentially(particle, meas_source_index, measurement
         sampled_assoc_idx = np.random.choice(len(proposal_distribution),
                                                 p=proposal_distribution)
 
-        if CHECK_K_NEAREST_TARGETS:
-            possible_target_assoc_count = min(K_NEAREST_TARGETS, total_target_count)
+        if params.CHECK_K_NEAREST_TARGETS:
+            possible_target_assoc_count = min(params.K_NEAREST_TARGETS, total_target_count)
             if(sampled_assoc_idx <= possible_target_assoc_count): #target or birth association
                 if(sampled_assoc_idx == possible_target_assoc_count): #birth
                     birth_count[params.get_score_index(meas_score, meas_source_index)] += 1

@@ -87,21 +87,26 @@ if USE_RANDOM_SEED:
     random.seed(5)
     np.random.seed(seed=5)
     
+
+CHECK_K_NEAREST_TARGETS = False
+K_NEAREST_TARGETS = 1
+
+
 USE_LEARNED_KF_PARAMS = True
 USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = True #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 0
+ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
 #if true only update a target with at most one measurement
 #(i.e. not regionlets and then lsvm)
-MAX_1_MEAS_UPDATE = False
+MAX_1_MEAS_UPDATE = True
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
-UPDATE_MULT_MEAS_SIMUL = True
+UPDATE_MULT_MEAS_SIMUL = False
 if(MAX_1_MEAS_UPDATE):
     UPDATE_MULT_MEAS_SIMUL = False
 #for debugging, zero out covariance between measurement sources when
@@ -1859,7 +1864,8 @@ if __name__ == "__main__":
         params = Parameters(TARGET_EMISSION_PROBS, CLUTTER_PROBABILITIES,\
                  BIRTH_PROBABILITIES, MEAS_NOISE_COVS, R_default, H,\
                  USE_PYTHON_GAUSSIAN, USE_CONSTANT_R, SCORE_INTERVALS,\
-                 p_birth_likelihood, p_clutter_likelihood)
+                 p_birth_likelihood, p_clutter_likelihood, CHECK_K_NEAREST_TARGETS,
+                 K_NEAREST_TARGETS)
 
         assert(len(n_frames) == len(measurementTargetSetsBySequence))
 
