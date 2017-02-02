@@ -10,10 +10,10 @@ matplotlib.use('Agg')
 #import matplotlib.pyplot as plt
 
 #uncomment for using LSTM
-#from keras.models import Sequential
-#from keras.layers import Dense
-#from keras.layers import LSTM
-#from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
 
 #import matplotlib.cm as cmx
 #import matplotlib.colors as colors
