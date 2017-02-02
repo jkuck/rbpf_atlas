@@ -6,7 +6,8 @@ import filterpy
 
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+#uncomment for plotting
+#import matplotlib.pyplot as plt
 
 from keras.models import Sequential
 from keras.layers import Dense
@@ -91,7 +92,7 @@ USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = True #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 0
+ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
