@@ -9,10 +9,11 @@ matplotlib.use('Agg')
 #uncomment for plotting
 #import matplotlib.pyplot as plt
 
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.layers import LSTM
-from sklearn.preprocessing import MinMaxScaler
+#uncomment for using LSTM
+#from keras.models import Sequential
+#from keras.layers import Dense
+#from keras.layers import LSTM
+#from sklearn.preprocessing import MinMaxScaler
 
 #import matplotlib.cm as cmx
 #import matplotlib.colors as colors
@@ -97,7 +98,7 @@ USE_POISSON_DEATH_MODEL = False
 USE_CREATE_CHILD = True #speed up copying during resampling
 RUN_ONLINE = True #save online results 
 #near online mode wait this many frames before picking max weight particle 
-ONLINE_DELAY = 0
+ONLINE_DELAY = 3
 #Write results of the particle with the largest importance
 #weight times current likelihood, double check doing this correctly
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
