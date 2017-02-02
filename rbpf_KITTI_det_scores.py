@@ -909,7 +909,7 @@ class TargetSet:
                 bottom = y_pos + height/2.0      
                 if SAVE_EXTRA_INFO:
                     f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
-                        (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                        (frame_idx - ONLINE_DELAY, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
                         extra_info['first_time_as_max_imprt_part'], self.living_count))
                 else:
                     f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
@@ -940,12 +940,16 @@ class TargetSet:
                         bottom = y_pos + height/2.0      
                         if SAVE_EXTRA_INFO:
                             f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
-                                (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                                (cur_frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
                                 extra_info['first_time_as_max_imprt_part'], self.living_count))
+                            print "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                                (cur_frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                                extra_info['first_time_as_max_imprt_part'], self.living_count)
                         else:
                             f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
                                 (cur_frame_idx, target.id_, left, top, right, bottom))
 
+                print "&&&&&&&&&"
                 for target in self.living_targets:
                     assert(target.all_time_stamps[-1] == round(frame_idx*default_time_step, 2))
                     x_pos = target.all_states[-1][0][0][0]
@@ -961,9 +965,14 @@ class TargetSet:
                         f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
                             (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
                             extra_info['first_time_as_max_imprt_part'], self.living_count))
+                        print  "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1 %f %s %d\n" % \
+                            (frame_idx, target.id_, left, top, right, bottom, extra_info['importance_weight'], \
+                            extra_info['first_time_as_max_imprt_part'], self.living_count)
                     else:
                         f.write( "%d %d Car -1 -1 2.57 %f %f %f %f -1 -1 -1 -1000 -1000 -1000 -10 1\n" % \
                             (frame_idx, target.id_, left, top, right, bottom))
+
+
 
     def write_targets_to_KITTI_format(self, num_frames, results_filename, plot_filename):
         x_locations_all_targets = defaultdict(list)
