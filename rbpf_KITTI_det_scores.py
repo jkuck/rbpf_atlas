@@ -88,7 +88,7 @@ if USE_RANDOM_SEED:
     np.random.seed(seed=5)
     
 
-CHECK_K_NEAREST_TARGETS = False
+CHECK_K_NEAREST_TARGETS = True
 K_NEAREST_TARGETS = 1
 
 
