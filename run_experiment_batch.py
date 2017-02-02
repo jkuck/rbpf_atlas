@@ -17,7 +17,7 @@ DIRECTORY_OF_ALL_RESULTS = './ICML_prep_correctedOnline'
 
 
 #CUR_EXPERIMENT_BATCH_NAME = 'Rto0_4xQ_multMeas1update_online0frameDelay'
-CUR_EXPERIMENT_BATCH_NAME = 'CHECK_K_NEAREST_TARGETS=False/Reference/Rto0_4xQ_max1MeasUpdate_online3frameDelay'
+CUR_EXPERIMENT_BATCH_NAME = 'CHECK_K_NEAREST_TARGETS=False/Reference/Rto0_4xQ_max1MeasUpdate_online0frameDelay'
 #CUR_EXPERIMENT_BATCH_NAME = 'measuredR_1xQ_max1MeasUpdate_online3frameDelay'
 
 def get_description_of_run(include_ignored_gt, include_dontcare_in_gt, sort_dets_on_intervals,
