@@ -97,10 +97,12 @@ ONLINE_DELAY = 3
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
 #if true only update a target with at most one measurement
 #(i.e. not regionlets and then lsvm)
-MAX_1_MEAS_UPDATE = False
+MAX_1_MEAS_UPDATE = True
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
-UPDATE_MULT_MEAS_SIMUL = True
+UPDATE_MULT_MEAS_SIMUL = False
+if(MAX_1_MEAS_UPDATE):
+    UPDATE_MULT_MEAS_SIMUL = False
 #for debugging, zero out covariance between measurement sources when
 #UPDATE_MULT_MEAS_SIMUL=True, should be the same result as sequential updates
 TREAT_MEAS_INDEP = False
@@ -364,9 +366,6 @@ class Target:
         assert(len(self.associated_measurements) == 2)
         assert(self.associated_measurements[0]['cur_time'] == self.associated_measurements[1]['cur_time'])
 
-        if TREAT_MEAS_INDEP:
-            JOINT_MEAS_NOISE_COV[0:2, 2:4] = np.array([[0,0],[0,0]])
-            JOINT_MEAS_NOISE_COV[2:4, 0:2] = np.array([[0,0],[0,0]])
         if TREAT_MEAS_INDEP_2:
             reformat_meas1 = np.array([[self.associated_measurements[0]['meas_loc'][0]],
                                       [self.associated_measurements[0]['meas_loc'][1]]])            
@@ -377,6 +376,11 @@ class Target:
             (self.x, self.P) = self.kf_update(reformat_meas2, JOINT_MEAS_NOISE_COV[2:4, 2:4])
 
         else:    
+            if TREAT_MEAS_INDEP:
+                JOINT_MEAS_NOISE_COV[0:2, 2:4] = np.array([[0,0],[0,0]])
+                JOINT_MEAS_NOISE_COV[2:4, 0:2] = np.array([[0,0],[0,0]])
+
+
             R_inv = inv(JOINT_MEAS_NOISE_COV)
             R_inv_11 = R_inv[0:2, 0:2]
             R_inv_12 = R_inv[0:2, 2:4]
