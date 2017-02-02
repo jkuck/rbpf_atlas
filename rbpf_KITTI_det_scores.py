@@ -103,10 +103,10 @@ ONLINE_DELAY = 0
 FIND_MAX_IMPRT_TIMES_LIKELIHOOD = False 
 #if true only update a target with at most one measurement
 #(i.e. not regionlets and then lsvm)
-MAX_1_MEAS_UPDATE = True
+MAX_1_MEAS_UPDATE = False
 #if true, view measurements as jointly gaussian and update
 #target once per time stamp with combination of associated measurements
-UPDATE_MULT_MEAS_SIMUL = False
+UPDATE_MULT_MEAS_SIMUL = True
 if(MAX_1_MEAS_UPDATE):
     UPDATE_MULT_MEAS_SIMUL = False
 #for debugging, zero out covariance between measurement sources when
